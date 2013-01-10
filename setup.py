@@ -4,16 +4,16 @@ from setuptools import setup, find_packages
 here = os.path.abspath(os.path.dirname(__file__))
 
 setup(
-    name='django-leaflet',
-    version='0.5.0.dev0',
-    author='Mathieu Leplatre',
-    author_email='mathieu.leplatre@makina-corpus.com',
-    url='https://github.com/makinacorpus/django-leaflet',
-    download_url = "http://pypi.python.org/pypi/django-leaflet/",
-    description="Use Leaflet in your django projects",
+    name='django-geoexplorer',
+    version='3.0.1.dev84743c7',
+    author='Ariel Nunez',
+    author_email='ingenieroariel@gmail.com',
+    url='https://github.com/GeoNode/django-geoexplorer',
+    download_url = "http://pypi.python.org/pypi/django-geoexplorer/",
+    description="Use GeoExplorer in your django projects",
     long_description=open(os.path.join(here, 'README.rst')).read() + '\n\n' + 
                      open(os.path.join(here, 'CHANGES')).read(),
-    license='LPGL, see LICENSE file.',
+    license='LGPL, see LICENSE file.',
     install_requires=['Django'],
     packages=find_packages(),
     include_package_data = True,
