@@ -5,20 +5,20 @@ here = os.path.abspath(os.path.dirname(__file__))
 
 setup(
     name='django-geoexplorer',
-    version='3.0.1.dev84743c7',
+    version='3.0.1.dev84743c70',
     author='Ariel Nunez',
     author_email='ingenieroariel@gmail.com',
     url='https://github.com/GeoNode/django-geoexplorer',
     download_url = "http://pypi.python.org/pypi/django-geoexplorer/",
     description="Use GeoExplorer in your django projects",
-    long_description=open(os.path.join(here, 'README.rst')).read() + '\n\n' + 
+    long_description=open(os.path.join(here, 'README.rst')).read() + '\n\n' +
                      open(os.path.join(here, 'CHANGES')).read(),
     license='LGPL, see LICENSE file.',
     install_requires=['Django'],
     packages=find_packages(),
     include_package_data = True,
     zip_safe = False,
-    classifiers  = ['Topic :: Utilities', 
+    classifiers  = ['Topic :: Utilities',
                     'Natural Language :: English',
                     'Operating System :: OS Independent',
                     'Intended Audience :: Developers',
