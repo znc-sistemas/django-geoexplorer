@@ -28,10 +28,6 @@ div.olLayerDiv {
 .olLayerGoogleV3.olLayerGooglePoweredBy {
     bottom: 15px !important;
 }
-/* GMaps should not set styles on its container */
-.olForeignContainer {
-    opacity: 1 !important;
-}
 .olControlAttribution {
     font-size: smaller;
     right: 3px;
@@ -485,9 +481,4 @@ a.olControlZoomOut {
     -moz-transition: opacity 0.2s linear;
     -o-transition: opacity 0.2s linear;
     transition: opacity 0.2s linear;
-}
-
-/* override any max-width image settings (e.g. bootstrap.css) */
-img.olTileImage {
-    max-width: none;
 }
