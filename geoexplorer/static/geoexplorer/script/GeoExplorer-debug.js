@@ -79486,6 +79486,131 @@ gxp.NewSourceDialog = Ext.extend(Ext.Panel, {
 /** api: xtype = gxp_newsourcedialog */
 Ext.reg('gxp_newsourcedialog', gxp.NewSourceDialog);
 
+/** FILE: plugins/FeedGetFeatureInfo.js **/
+/**
+ * Copyright (c) 2008-2011 The Open Planning Project
+ *
+ * Published under the GPL license.
+ * See https://github.com/opengeo/gxp/raw/master/license.txt for the full text
+ * of the license.
+ */
+
+/**
+ * @requires plugins/Tool.js
+ */
+
+/** api: (define)
+ *  module = gxp.plugins
+ *  class = FeedGetFeatureInfo
+ */
+
+/** api: (extends)
+ *  plugins/Tool.js
+ */
+Ext.namespace("gxp.plugins");
+
+/** api: constructor
+ *  .. class:: FeedGetFeatureInfo(config)
+
+ *    Plugin to display info popups for geoRSS feed layers
+ *    TODO Make this plural - selected layers
+ */
+
+gxp.plugins.FeedGetFeatureInfo =  Ext.extend(gxp.plugins.Tool,{
+
+    /** api: ptype = gxp_getfeedfeatureinfo */
+    ptype: "gxp_getfeedfeatureinfo",
+
+    init: function(target) {
+        gxp.plugins.FeedGetFeatureInfo.superclass.init.apply(this, arguments);
+
+        this.target.mapPanel.layers.on({
+            "add": this.addLayer,
+            "remove": this.removeLayer,
+            scope: this
+        });
+
+    },
+
+    /** private: method [addLayer]
+     *
+     * Adds a geoRSS layer to the SelectControl
+     *
+     */
+    addLayer: function(store, records, index){
+        for (var i = 0,  ii = records.length; i < ii; ++i) {
+            var record = records[i];
+            var source = this.target.getSource(record);
+            var layer = record.getLayer();
+            if (source  instanceof gxp.plugins.FeedSource) {
+                //Create a SelectFeature control & add layer to it.
+                if (this.target.selectControl == null) {
+                    this.target.selectControl = new OpenLayers.Control.SelectFeature(layer, {
+                        clickout: true,
+                        listeners: {
+                            'clickoutFeature': function () {
+                            }
+                        },
+                        scope: this
+                    });
+
+                    this.target.mapPanel.map.addControl(this.target.selectControl);
+
+                } else {
+                    var currentLayers = this.target.selectControl.layers ? this.target.selectControl.layers :
+                        (this.target.selectControl.layer ? [this.target.selectControl.layer] : []);
+                    currentLayers.push(layer);
+                    this.target.selectControl.setLayer(currentLayers);
+                }
+            }
+        }
+
+        if (this.target.selectControl)
+            this.target.selectControl.activate();
+    },
+
+
+
+    /** private: method[removeLayer]
+     *
+     * Remove a feed layer from the SelectFeatureControl (if present) when that layer is removed from the map.
+     * If this is not done, the layer will remain on the map even after the record is deleted.
+     *
+     */
+    removeLayer:  function(store, records, index){
+    	if (!records.length) {
+    		records = [records];
+    	}
+    	for (var i = 0,  ii = records.length; i < ii; ++i) {
+    		var layer = records[i].getLayer();
+    		var selectControl = this.target.selectControl;
+    		//SelectControl might have layers array or single layer object
+    		if (selectControl != null) {
+    			if (selectControl.layers){
+    				for (var x = 0; x < selectControl.layers.length; x++)
+    				{
+    					var selectLayer = selectControl.layers[x];
+    					var selectLayers = selectControl.layers;
+    					if (selectLayer.id === layer.id) {
+    						selectLayers.splice(x,1);
+    						selectControl.setLayer(selectLayers);
+    					}
+    				}
+    			} else if (selectControl.layer != null) {
+    				if (layer.id === selectControl.layer.id) {
+    					selectControl.setLayer([]);
+    				}
+    			}
+    		}
+    	}
+    }
+
+
+});
+
+
+Ext.preg(gxp.plugins.FeedGetFeatureInfo.prototype.ptype, gxp.plugins.FeedGetFeatureInfo);
+
 /** FILE: OpenLayers/Format/GeoRSS.js **/
 /* Copyright (c) 2006-2012 by OpenLayers Contributors (see authors.txt for 
  * full list of contributors). Published under the 2-clause BSD license.
@@ -80508,6 +80633,7 @@ OpenLayers.Strategy.BBOX = OpenLayers.Class(OpenLayers.Strategy, {
 
 /**
  * @requires plugins/LayerSource.js
+ * @requires plugins/FeedGetFeatureInfo.js
  * @requires OpenLayers/Format/GeoRSS.js
  * @requires OpenLayers/Format/GeoJSON.js
  * @requires OpenLayers/Format/GML.js
@@ -80732,6 +80858,315 @@ gxp.plugins.FeedSource = Ext.extend(gxp.plugins.LayerSource, {
 });
 Ext.preg(gxp.plugins.FeedSource.prototype.ptype, gxp.plugins.FeedSource);
 
+/** FILE: plugins/PicasaFeedSource.js **/
+/**
+ * Copyright (c) 2008-2011 The Open Planning Project
+ *
+ * Published under the GPL license.
+ * See https://github.com/opengeo/gxp/raw/master/license.txt for the full text
+ * of the license.
+ */
+
+/**
+ * @requires plugins/FeedSource.js
+ */
+
+/** api: (define)
+ *  module = gxp.plugins
+ *  class = PicasaFeedSource
+ */
+
+/** api: (extends)
+ *  plugins/FeedSource.js
+ */
+
+Ext.namespace("gxp.plugins");
+
+gxp.plugins.PicasaFeedSource = Ext.extend(gxp.plugins.FeedSource, {
+
+    /** api: ptype = gxp_picasasource */
+    ptype: "gxp_picasasource",
+
+
+    /** api: url [String]
+     * The URL of the Picasa feed
+     */
+    url: "http://picasaweb.google.com/data/feed/base/all?thumbsize=160c&",
+
+    /** api:format [String]
+     *  The default feature format for the feed source
+     */
+    format: "OpenLayers.Format.Picasa",
+
+    /** api:title [String]
+     * Title for source
+     **/
+    title: 'Picasa Photos',
+
+    /** api:pointRadius [Number]
+     * Size of thumbnails
+     **/
+    pointRadius: 14,
+
+    /** api:popupTemplate [String]
+     * Template for specifying HTML contents of popup
+     **/
+    popupTemplate:  '<tpl for="."><a target="_blank" href="{link}"><img  title="{title}" src="{thumbnail}"/></a></tpl>',
+
+
+    /**
+     * Create a Picasa layer record
+     * @param config
+     * @return GeoExt.data.LayerRecord
+     */
+    createLayerRecord: function(config) {
+        if (Ext.isEmpty(config.params["max-results"])) {
+            config.params["max-results"] = 50;
+        }
+        config.url = this.url;
+
+
+        this.format =  new OpenLayers.Format.GeoRSS({
+            // adds the thumbnail attribute to the feature
+            createFeatureFromItem: function(item) {
+                var feature = OpenLayers.Format.GeoRSS.prototype.createFeatureFromItem.apply(this, arguments);
+                feature.attributes.thumbnail = this.getElementsByTagNameNS(item, "http://search.yahoo.com/mrss/", "thumbnail")[0].getAttribute("url");
+                feature.attributes.content = OpenLayers.Util.getXmlNodeValue(this.getElementsByTagNameNS(item, "*","summary")[0]);
+                return feature;
+            }
+        });
+
+        var record = gxp.plugins.PicasaFeedSource.superclass.createLayerRecord.apply(this, arguments);
+
+        var layer = record.getLayer();
+
+        //Picasa will not return results if bounds are invalid
+        layer.protocol.filterToParams =  function(filter, params) {
+            if (filter.type === OpenLayers.Filter.Spatial.BBOX) {
+                var bbox =  filter.value.toArray();
+                params.bbox = [Math.max(-180,bbox[0]), Math.max(-90, bbox[1]), Math.min(180, bbox[2]), Math.min(90, bbox[3]) ];
+            }
+            return params;
+        }
+
+        return record;
+    },
+
+    /**
+     * Configure popup to display larger Picasa thumbnail
+     * @param layer
+     */
+    configureInfoPopup: function(layer) {
+        var tpl = new Ext.XTemplate(this.popupTemplate);
+        layer.events.on({
+            "featureselected": function(featureObject) {
+                var feature = featureObject.feature;
+                var pos = feature.geometry;
+
+                if (this.target.selectControl.popup != null) {
+                    this.target.selectControl.popup.close();
+                }
+
+                var content = document.createElement("div");
+                content.innerHTML = feature.attributes.content;
+
+                var popupFeature = {
+                    "link": content.getElementsByTagName('a')[0].getAttribute('href'),
+                    "title": feature.attributes.title,
+                    "thumbnail": feature.attributes.thumbnail
+                };
+
+                this.target.selectControl.popup = new GeoExt.Popup({
+                    title: feature.attributes.title,
+                    closeAction: 'destroy',
+                    location : feature,
+                    width: 175,
+                    height: 200,
+                    html: tpl.apply(popupFeature)
+                });
+                this.target.selectControl.popup.show();
+            },
+
+            "featureunselected" : function(featureObject) {
+                if (this.target.selectControl && this.target.selectControl.popup) {
+                    this.target.selectControl.popup.close();
+                }
+            },
+            scope: this
+        });
+    },
+
+    getStyleMap: function(config) {
+        return new OpenLayers.StyleMap({
+            "default": new OpenLayers.Style(
+                {externalGraphic: "${thumbnail}", pointRadius: this.pointRadius},
+                {title: this.title}),
+            "select": new OpenLayers.Style({pointRadius: this.pointRadius+5})
+        });
+    }
+
+});
+
+Ext.preg(gxp.plugins.PicasaFeedSource.prototype.ptype, gxp.plugins.PicasaFeedSource);
+/** FILE: plugins/YouTubeFeedSource.js **/
+/**
+ * Copyright (c) 2008-2011 The Open Planning Project
+ *
+ * Published under the GPL license.
+ * See https://github.com/opengeo/gxp/raw/master/license.txt for the full text
+ * of the license.
+ */
+
+
+/**
+ * @requires plugins/FeedSource.js
+ *
+ */
+
+/** api: (define)
+ *  module = gxp.plugins
+ *  class = YouTubeFeedSource
+ */
+
+/** api: (extends)
+ *  plugins/FeedSource.js
+ */
+
+Ext.namespace("gxp.plugins");
+
+gxp.plugins.YouTubeFeedSource = Ext.extend(gxp.plugins.FeedSource, {
+
+    /** api: ptype = gxp_youtubesource */
+    ptype: "gxp_youtubesource",
+
+    /** api: url [String]
+     * The URL for the YouTube GeoRSS feed
+     * **/
+    url: "http://gdata.youtube.com/feeds/api/videos?v=2&prettyprint=true&",
+
+    /**api: format [String]
+     * The default format to use for YouTube features
+     */
+    format: "OpenLayers.Format.YouTube",
+
+    /** api:title [String]
+     * Title for source
+     **/
+    title: 'Youtube Videos',
+
+    /** api:pointRadius [Number]
+     * Size of thumbnails
+     **/
+    pointRadius: 24,
+
+    /** api:popupTemplate [String]
+     * Template for specifying HTML contents of popup
+     **/
+    popupTemplate:  '<tpl for="."><a target="_blank" href="{link}"><img height="180"  width="240" title="{title}" src="{thumbnail}"/></a></tpl>',
+
+    /**
+     * Create a YouTube layer record
+     * @param config
+     * @return layerRecord
+     */
+    createLayerRecord:function (config) {
+
+        if (Ext.isEmpty(config.params["max-results"])) {
+            config.params["max-results"] = 50;
+        } else {
+            //Youtube doesn't accept more than 50 results
+            config.params["max-results"] = Math.min(config.params["max-results"], 50);
+        }
+
+        config.url = this.url;
+
+        this.format =  new OpenLayers.Format.GeoRSS({
+            // adds the thumbnail attribute to the feature
+            createFeatureFromItem: function(item) {
+                var feature = OpenLayers.Format.GeoRSS.prototype.createFeatureFromItem.apply(this, arguments);
+                feature.attributes.thumbnail = this.getElementsByTagNameNS(item, "http://search.yahoo.com/mrss/", "thumbnail")[4].getAttribute("url");
+                feature.attributes.content = OpenLayers.Util.getXmlNodeValue(this.getElementsByTagNameNS(item, "*", "summary")[0]);
+                return feature;
+            }
+        });
+
+        var record = gxp.plugins.YouTubeFeedSource.superclass.createLayerRecord.apply(this, arguments);
+
+        var layer = record.getLayer();
+
+        layer.protocol.filterToParams =  function(filter, params) {
+            if (filter.type === OpenLayers.Filter.Spatial.BBOX) {
+                var bounds =  filter.value;
+                var location = bounds.getCenterLonLat();
+                //calculate the location-radius to use
+                var R = 6378.1370;
+                var PI = 3.1415926;
+                var leftBounds = R * (bounds.left) / 180.0 / PI;
+                var rightBounds = R * (bounds.right) / 180.0 / PI;
+                var radius = Math.min((rightBounds - leftBounds) / 2 * 2, 1000);
+                Ext.apply(params, {
+                    "location":"" + location.lat + "," + location.lon,
+                    "location-radius":radius + "km"
+                });
+            }
+            return params;
+        }
+
+        return record;
+    },
+
+    /**
+     * Create a popup based on the YouTube feature attributes
+     * @param layer
+     */
+    configureInfoPopup:function (layer) {
+        var tpl = new Ext.XTemplate(this.popupTemplate);
+        layer.events.on({
+            "featureselected":function (featureObject) {
+                var feature = featureObject.feature;
+                var pos = feature.geometry;
+
+                if (this.target.selectControl.popup != null) {
+                    this.target.selectControl.popup.close();
+                }
+
+                this.target.selectControl.popup = new GeoExt.Popup({
+                    title: feature.attributes.title,
+                    location : feature,
+                    width: 240,
+                    height: 220,
+                    closeAction: 'destroy',
+                    html: tpl.apply(feature.attributes)
+                });
+                this.target.selectControl.popup.show();
+            },
+
+            "featureunselected":function (featureObject) {
+                if (this.target.selectControl && this.target.selectControl.popup) {
+                    this.target.selectControl.popup.close();
+                }
+            },
+            scope:this
+        });
+    },
+
+    /**
+     * Create an OpenLayers.StyleMap based on configuration parameters
+     * @param config
+     * @return {OpenLayers.StyleMap}
+     */
+    getStyleMap:function (config) {
+        return new OpenLayers.StyleMap({
+            "default":new OpenLayers.Style(
+                {externalGraphic:"${thumbnail}", pointRadius:24},
+                {title: this.title}),
+            "select":new OpenLayers.Style({pointRadius:this.pointRadius+5})
+        });
+    }
+
+});
+
+Ext.preg(gxp.plugins.YouTubeFeedSource.prototype.ptype, gxp.plugins.YouTubeFeedSource);
 /** FILE: widgets/FeedSourceDialog.js **/
 /**
  * Copyright (c) 2008-2011 The Open Planning Project
@@ -80743,6 +81178,8 @@ Ext.preg(gxp.plugins.FeedSource.prototype.ptype, gxp.plugins.FeedSource);
 
 /**
  * @requires plugins/FeedSource.js
+ * @requires plugins/PicasaFeedSource.js
+ * @requires plugins/YouTubeFeedSource.js
  * @requires widgets/PointSymbolizer.js
  */
 
@@ -80761,29 +81198,31 @@ Ext.namespace("gxp");
  */
 gxp.FeedSourceDialog = Ext.extend(Ext.Container, {
     /** api: config[feedTypeText] ``String`` i18n */
-    feedTypeText: "Feed Source",
+    feedTypeText: "Source",
     /** api: config[addPicasaText] ``String`` i18n */
     addPicasaText: "Picasa Photos",
     /** api: config[addYouTubeText] ``String`` i18n */
     addYouTubeText: "YouTube Videos",
     /** api: config[addRSSText] ``String`` i18n */
-    addRSSText: "Other GeoRSS Feed",
+    addRSSText: "GeoRSS Feed",
     /** api: config[addFeedText] ``String`` i18n */
     addFeedText: "Add to Map",
     /** api: config[addTitleText] ``String`` i18n */
-    addTitleText: "Feed Title",
+    addTitleText: "Title",
     /** api: config[keywordText] ``String`` i18n */
     keywordText: "Keyword",
     /** api: config[doneText] ``String`` i18n */
     doneText: "Done",
     /** api: config[titleText] ``String`` i18n */
     titleText: "Add Feeds",
+    /** api: config[maxResultsText] ``String`` i18n */
+    maxResultsText: "Max Items",
 
     /**
      * api: config[width]
      * ``Number`` width of dialog
      */
-    width: 400,
+    width: 300,
 
     /**
      * api: config[autoHeight]
@@ -80810,16 +81249,10 @@ gxp.FeedSourceDialog = Ext.extend(Ext.Container, {
 
         if (!this.feedTypes) {
             this.feedTypes  = [
+                [gxp.plugins.PicasaFeedSource.ptype, this.addPicasaText],
+                [gxp.plugins.YouTubeFeedSource.ptype, this.addYouTubeText],
                 [gxp.plugins.FeedSource.ptype, this.addRSSText]
             ];
-
-            if (gxp.plugins.YouTubeFeedSource) {
-                this.feedTypes.unshift( [gxp.plugins.YouTubeFeedSource.ptype, this.addYouTubeText]);
-            }
-
-            if (gxp.plugins.PicasaFeedSource) {
-                this.feedTypes.unshift([gxp.plugins.PicasaFeedSource.ptype, this.addPicasaText]);
-            }
         }
 
         var feedStore = new Ext.data.ArrayStore({
@@ -80833,6 +81266,7 @@ gxp.FeedSourceDialog = Ext.extend(Ext.Container, {
             displayField:'name',
             valueField:'type',
             typeAhead: true,
+            width: 180,
             mode: 'local',
             triggerAction: 'all',
             emptyText:'Select a feed source...',
@@ -80860,7 +81294,7 @@ gxp.FeedSourceDialog = Ext.extend(Ext.Container, {
             fieldLabel: "URL",
             allowBlank: false,
             //hidden: true,
-            width: 240,
+            width: 180,
             msgTarget: "right",
             validator: this.urlValidator.createDelegate(this)
         });
@@ -80869,19 +81303,19 @@ gxp.FeedSourceDialog = Ext.extend(Ext.Container, {
             fieldLabel: this.keywordText,
             allowBlank: true,
             hidden: true,
-            width: 150,
+            width: 180,
             msgTarget: "right"
         });
 
         var titleTextField = new Ext.form.TextField({
             fieldLabel: this.addTitleText,
             allowBlank: true,
-            width: 150,
+            width: 180,
             msgTarget: "right"
         });
 
         var maxResultsField = new Ext.form.ComboBox({
-            fieldLabel: 'Maximum # Results',
+            fieldLabel: this.maxResultsText,
             hidden: true,
             hiddenName: 'max-results',
             store: new Ext.data.ArrayStore({
@@ -80892,16 +81326,18 @@ gxp.FeedSourceDialog = Ext.extend(Ext.Container, {
             mode: 'local',
             triggerAction: 'all',
             emptyText:'Choose number...',
-            labelWidth: 100,
+            labelWidth: 70,
+            width: 180,
             defaults: {
-                labelWidth: 100,
-                width:100
+                labelWidth: 70,
+                width:180
             }
         });
 
 
         var symbolizerField = new gxp.PointSymbolizer({
             bodyStyle: {padding: "10px"},
+            width: 280,
             border: false,
             hidden: true,
             labelWidth: 70,
@@ -80929,11 +81365,10 @@ gxp.FeedSourceDialog = Ext.extend(Ext.Container, {
                 };
 
                 if (ptype != "gxp_feedsource") {
-                    config.params = {"q" : keywordTextField.getValue(), "max-results" : maxResultsField.getValue()}
-
+                    config.params = {"q" : keywordTextField.getValue(), "max-results" : maxResultsField.getValue()};
                 } else {
                     config.url = urlTextField.getValue();
-                    var symbolizer = symbolizerField.symbolizer
+                    var symbolizer = symbolizerField.symbolizer;
                     config.defaultStyle = {};
                     config.selectStyle = {};
                     Ext.apply(config.defaultStyle, symbolizer);
@@ -80965,6 +81400,7 @@ gxp.FeedSourceDialog = Ext.extend(Ext.Container, {
 
         this.panel = new Ext.Panel({
             bbar: bbarItems,
+            autoScroll: true,
             items: [
                 sourceTypeSelect,
                 titleTextField,
@@ -81029,7 +81465,6 @@ gxp.FeedSourceDialog = Ext.extend(Ext.Container, {
 
 /** api: xtype = gxp_feedsourcedialog */
 Ext.reg('gxp_feedsourcedialog', gxp.FeedSourceDialog);
-
 
 
 
@@ -81279,11 +81714,15 @@ gxp.plugins.GeoNodeCatalogueSource = Ext.extend(gxp.plugins.CatalogueSource, {
      */
     filter: function(options) {
         var bbox = undefined;
-        for (var i=0, ii=options.filters.length; i<ii; ++i) {
-            var f = options.filters[i];
-            if (f instanceof OpenLayers.Filter.Spatial) {
-                bbox = f.value.toBBOX();
-                break;
+
+        // check for the filters property before using it
+        if (options.filters !== undefined) {
+            for (var i=0, ii=options.filters.length; i<ii; ++i) {
+                var f = options.filters[i];
+                if (f instanceof OpenLayers.Filter.Spatial) {
+                    bbox = f.value.toBBOX();
+                    break;
+                }
             }
         }
         Ext.apply(this.store.baseParams, {
@@ -82264,10 +82703,11 @@ gxp.plugins.AddLayers = Ext.extend(gxp.plugins.Tool, {
      * Shows the window with a dialog for adding feeds.
      */
     showFeedDialog: function() {
-        var Cls = this.outputTarget ? Ext.Panel : Ext.Window;
         if(!this.feedDialog) {
+            var Cls = this.outputTarget ? Ext.Panel : Ext.Window;
             this.feedDialog = new Cls(Ext.apply({
                 closeAction: "hide",
+                autoScroll: true,
                 title: this.addFeedActionMenuText,
                 items: [{
                     xtype: "gxp_feedsourcedialog",
@@ -82282,8 +82722,7 @@ gxp.plugins.AddLayers = Ext.extend(gxp.plugins.Tool, {
                             config.source = source.id;
                             var feedRecord = source.createLayerRecord(config);
                             this.target.mapPanel.layers.add([feedRecord]);
-                            //this.target.selectControl.activate();
-                            this.feedDialog.hide()
+                            this.feedDialog.hide();
                         },
                         scope: this
                     }
@@ -82291,7 +82730,10 @@ gxp.plugins.AddLayers = Ext.extend(gxp.plugins.Tool, {
             }, this.initialConfig.outputConfig));
             if (Cls === Ext.Panel) {
                 this.addOutput(this.feedDialog);
-            };
+            }
+        }
+        if (!(this.feedDialog instanceof Ext.Window)) {
+            this.addOutput(this.feedDialog);
         }
         this.feedDialog.show();
     },
@@ -87894,7 +88336,20 @@ GeoExt.Lang.add("ca", {
     },
 
     "gxp.Viewer.prototype": {
-        saveErrorText: "Trouble saving: "
+        saveErrorText: "Problemes desant: "
+    },
+
+    "gxp.FeedSourceDialog.prototype": {
+        feedTypeText: "Font",
+        addPicasaText: "Picasa fotos",
+        addYouTubeText: "YouTube Videos",
+        addRSSText: "Feed GeoRSS Un altre",
+        addFeedText: "Afegeix a Mapa",
+        addTitleText: "Títol",
+        keywordText: "Paraula clau",
+        doneText: "Fet",
+        titleText: "Afegir Feeds",
+        maxResultsText: "Productes Max"
     }
 
 });
@@ -88311,7 +88766,20 @@ GeoExt.Lang.add("de", {
     },
 
     "gxp.Viewer.prototype": {
-        saveErrorText: "Trouble saving: "
+        saveErrorText: "Beim Speichern ist ein Problem aufgetreten: "
+    },
+
+    "gxp.FeedSourceDialog.prototype": {
+        feedTypeText: "Source",
+        addPicasaText: "Picasa Fotos",
+        addYouTubeText: "YouTube Videos",
+        addRSSText: "Andere GeoRSS Feed",
+        addFeedText: "zur Karte hinzufügen",
+        addTitleText: "Titel",
+        keywordText: "Keyword",
+        doneText: "Fertig",
+        titleText: "Add-Feeds",
+        maxResultsText: "Max Items"
     }
 
 });
@@ -88722,6 +89190,19 @@ GeoExt.Lang.add("el", {
 
     "gxp.Viewer.prototype": {
         saveErrorText: "Trouble saving: "
+    },
+
+    "gxp.FeedSourceDialog.prototype": {
+        feedTypeText: "Πηγή",
+        addPicasaText: "Φωτογραφίες Picasa",
+        addYouTubeText: "YouTube βίντεο",
+        addRSSText: "Άλλα Feed GeoRSS",
+        addFeedText: "Προσθήκη στο χάρτη",
+        addTitleText: "Τίτλος",
+        keywordText: "Λέξη-κλειδί",
+        doneText: "Done",
+        titleText: "Προσθήκη ροής",
+        maxResultsText: "Max Είδη"
     }
 
 });
@@ -89139,6 +89620,19 @@ GeoExt.Lang.add("en", {
 
     "gxp.Viewer.prototype": {
         saveErrorText: "Trouble saving: "
+    },
+
+    "gxp.FeedSourceDialog.prototype": {
+        feedTypeText: "Source",
+        addPicasaText: "Picasa Photos",
+        addYouTubeText: "YouTube Videos",
+        addRSSText: "Other GeoRSS Feed",
+        addFeedText: "Add to Map",
+        addTitleText: "Title",
+        keywordText: "Keyword",
+        doneText: "Done",
+        titleText: "Add Feeds",
+        maxResultsText: "Max Items"
     }
 
 });
@@ -89554,7 +90048,20 @@ GeoExt.Lang.add("es", {
     },
 
     "gxp.Viewer.prototype": {
-        saveErrorText: "Trouble saving: "
+        saveErrorText: "Problemas guardando: "
+    },
+
+    "gxp.FeedSourceDialog.prototype": {
+        feedTypeText: "Fuente",
+        addPicasaText: "Picasa fotos",
+        addYouTubeText: "YouTube Videos",
+        addRSSText: "Feed GeoRSS Otro",
+        addFeedText: "Agregar al Mapa",
+        addTitleText: "Título",
+        keywordText: "Palabra clave",
+        doneText: "Hecho",
+        titleText: "Agregar Feeds",
+        maxResultsText: "Productos Max"
     }
 
 });
@@ -89905,7 +90412,20 @@ GeoExt.Lang.add("fr", {
     },
 
     "gxp.Viewer.prototype": {
-        saveErrorText: "Trouble saving: "
+        saveErrorText: "Sauver Trouble: "
+    },
+
+    "gxp.FeedSourceDialog.prototype": {
+        feedTypeText: "Source",
+        addPicasaText: "Picasa Photos",
+        addYouTubeText: "YouTube Vidéos",
+        addRSSText: "GeoRSS Autre",
+        addFeedText: "Ajouter à la carte",
+        addTitleText: "Titre",
+        keywordText: "Mot-clé",
+        doneText: "Terminé",
+        titletext:  "Ajouter RSS",
+        maxResultsText: "Articles Max"
     }
 
 });
@@ -90323,6 +90843,19 @@ GeoExt.Lang.add("id", {
 
     "gxp.Viewer.prototype": {
         saveErrorText: "Trouble saving: "
+    },
+
+    "gxp.FeedSourceDialog.prototype": {
+        feedTypeText: "Sumber",
+        addPicasaText: "Picasa Foto",
+        addYouTubeText: "YouTube Video",
+        addRSSText: "GeoRSS Pakan lain",
+        addFeedText: "Tambah ke Peta",
+        addTitleText: "Judul",
+        keywordText: "Kata Kunci",
+        doneText: "Selesai",
+        titleText: "Tambah Blog",
+        maxResultsText: "Produk Max"
     }
 
 });
@@ -90701,6 +91234,19 @@ GeoExt.Lang.add("nl", {
 
     "gxp.Viewer.prototype": {
         saveErrorText: "Problemen bij het opslaan: "
+    },
+
+    "gxp.FeedSourceDialog.prototype": {
+    	feedTypeText: "Bron",
+        addPicasaText: "Picasa Foto's",
+        addYouTubeText: "YouTube video's",
+        addRSSText: "Andere GeoRSS Feed",
+        addFeedText: "Voeg toe aan Map",
+        addTitleText: "Titel",
+        keywordText: "Trefwoord",
+        doneText: "Klaar",
+        titleText: "Voeg Feeds",
+        maxResultsText: "Max Items"
     }
 
 });
@@ -91097,6 +91643,19 @@ GeoExt.Lang.add("pl", {
 
     "gxp.Viewer.prototype": {
         saveErrorText: "Trouble saving: "
+    },
+
+    "gxp.FeedSourceDialog.prototype": {
+        feedTypeText: "Źródło",
+        addPicasaText: "Picasa zdjęcia",
+        addYouTubeText: "YouTube Videos",
+        addRSSText: "Inne GeoRSS",
+        addFeedText: "Dodaj do mapy",
+        addTitleText: "Tytuł",
+        keywordText: "Słowo",
+        doneText: "Gotowe",
+        titleText: "Dodaj kanały",
+        maxResultsText: "Rzeczy Max"
     }
 
 });
