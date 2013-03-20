@@ -49479,7 +49479,7 @@ gxp.Viewer = Ext.extend(Ext.util.Observable, {
 
     /** api: config[mapPlugins]
      *  ``Array(Ext.util.Observable)``
-     *  Any plugins to be added to the map panel, e.g. ``gxp.plugins.LoadingIndicator``.
+     *  Any plugins to be added to the map panel.
      */
      
     /** api: config[portalConfig]
@@ -67194,135 +67194,135 @@ gxp.plugins.FeatureEditor = Ext.extend(gxp.plugins.ClickableFeatures, {
                         schema: this.schema,
                         allowDelete: true,
                         width: 200,
-                        height: 250,
-                        listeners: {
-                            "close": function() {
-                                if (this.readOnly === false) {
-                                    this.selectControl.activate();
+                        height: 250
+                    });
+                    popup.on({
+                        "close": function() {
+                            if (this.readOnly === false) {
+                                this.selectControl.activate();
+                            }
+                            if(feature.layer && feature.layer.selectedFeatures.indexOf(feature) !== -1) {
+                                this.selectControl.unselect(feature);
+                            }
+                            if (feature === this.autoLoadedFeature) {
+                                if (feature.layer) {
+                                    feature.layer.removeFeatures([evt.feature]);
                                 }
-                                if(feature.layer && feature.layer.selectedFeatures.indexOf(feature) !== -1) {
-                                    this.selectControl.unselect(feature);
-                                }
-                                if (feature === this.autoLoadedFeature) {
-                                    if (feature.layer) {
-                                        feature.layer.removeFeatures([evt.feature]);
-                                    }
-                                    this.autoLoadedFeature = null;
-                                }
-                            },
-                            "featuremodified": function(popup, feature) {
-                                featureStore.on({
-                                    beforewrite: {
-                                        fn: function(store, action, rs, options) {
-                                            if (this.commitMessage === true) {
-                                                options.params.handle = this._commitMsg;
-                                                delete this._commitMsg;
-                                            }
-                                        },
-                                        single: true
+                                this.autoLoadedFeature = null;
+                            }
+                        },
+                        "featuremodified": function(popup, feature) {
+                            featureStore.on({
+                                beforewrite: {
+                                    fn: function(store, action, rs, options) {
+                                        if (this.commitMessage === true) {
+                                            options.params.handle = this._commitMsg;
+                                            delete this._commitMsg;
+                                        }
                                     },
-                                    beforesave: {
-                                        fn: function() {
-                                            if (popup && popup.isVisible()) {
-                                                popup.disable();
+                                    single: true
+                                },
+                                beforesave: {
+                                    fn: function() {
+                                        if (popup && popup.isVisible()) {
+                                            popup.disable();
+                                        }
+                                        if (this.commitMessage === true) {
+                                            if (!this._commitMsg) {
+                                                var fn = arguments.callee;
+                                                Ext.Msg.show({
+                                                    prompt: true,
+                                                    title: this.commitTitle,
+                                                    msg: this.commitText,
+                                                    buttons: Ext.Msg.OK,
+                                                    fn: function(btn, text) {
+                                                        if (btn === 'ok') {
+                                                            this._commitMsg = text;
+                                                            featureStore.un('beforesave', fn, this);
+                                                            featureStore.save();
+                                                        }
+                                                    },
+                                                    scope: this,
+                                                    multiline: true
+                                                });
+                                                return false;
                                             }
-                                            if (this.commitMessage === true) {
-                                                if (!this._commitMsg) {
-                                                    var fn = arguments.callee;
-                                                    Ext.Msg.show({
-                                                        prompt: true,
-                                                        title: this.commitTitle,
-                                                        msg: this.commitText,
-                                                        buttons: Ext.Msg.OK,
-                                                        fn: function(btn, text) {
-                                                            if (btn === 'ok') {
-                                                                this._commitMsg = text;
-                                                                featureStore.un('beforesave', fn, this);
-                                                                featureStore.save();
-                                                            }
-                                                        },
-                                                        scope: this,
-                                                        multiline: true
-                                                    });
-                                                    return false;
-                                                }
-                                            }
-                                        },
-                                        single: this.commitMessage !== true
+                                        }
                                     },
-                                    write: {
-                                        fn: function() {
-                                            if (popup) {
-                                                if (popup.isVisible()) {
-                                                    popup.enable();
-                                                }
-                                                if (this.closeOnSave) {
-                                                    popup.close();
-                                                }
-                                            }
-                                            var layer = featureManager.layerRecord;
-                                            this.target.fireEvent("featureedit", featureManager, {
-                                                name: layer.get("name"),
-                                                source: layer.get("source")
-                                            });
-                                        },
-                                        single: true
-                                    },
-                                    exception: {
-                                        fn: function(proxy, type, action, options, response, records) {
-                                            var msg = this.exceptionText;
-                                            if (type === "remote") {
-                                                // response is service exception
-                                                if (response.exceptionReport) {
-                                                    msg = gxp.util.getOGCExceptionText(response.exceptionReport);
-                                                }
-                                            } else {
-                                                // non-200 response from server
-                                                msg = "Status: " + response.status;
-                                            }
-                                            // fire an event on the feature manager
-                                            featureManager.fireEvent("exception", featureManager, 
-                                                response.exceptionReport || {}, msg, records);
-                                            // only show dialog if there is no listener registered
-                                            if (featureManager.hasListener("exception") === false && 
-                                                featureStore.hasListener("exception") === false) {
-                                                    Ext.Msg.show({
-                                                        title: this.exceptionTitle,
-                                                        msg: msg,
-                                                        icon: Ext.MessageBox.ERROR,
-                                                        buttons: {ok: true}
-                                                    });
-                                            }
-                                            if (popup && popup.isVisible()) {
+                                    single: this.commitMessage !== true
+                                },
+                                write: {
+                                    fn: function() {
+                                        if (popup) {
+                                            if (popup.isVisible()) {
                                                 popup.enable();
-                                                popup.startEditing();
                                             }
-                                        },
-                                        single: true
+                                            if (this.closeOnSave) {
+                                                popup.close();
+                                            }
+                                        }
+                                        var layer = featureManager.layerRecord;
+                                        this.target.fireEvent("featureedit", featureManager, {
+                                            name: layer.get("name"),
+                                            source: layer.get("source")
+                                        });
                                     },
-                                    scope: this
-                                });                                
-                                if(feature.state === OpenLayers.State.DELETE) {
-                                    /**
-                                     * If the feature state is delete, we need to
-                                     * remove it from the store (so it is collected
-                                     * in the store.removed list.  However, it should
-                                     * not be removed from the layer.  Until
-                                     * http://trac.geoext.org/ticket/141 is addressed
-                                     * we need to stop the store from removing the
-                                     * feature from the layer.
-                                     */
-                                    featureStore._removing = true; // TODO: remove after http://trac.geoext.org/ticket/141
-                                    featureStore.remove(featureStore.getRecordFromFeature(feature));
-                                    delete featureStore._removing; // TODO: remove after http://trac.geoext.org/ticket/141
-                                }
-                                featureStore.save();
-                            },
-                            "canceledit": function(popup, feature) {
-                                featureStore.commitChanges();
-                            },
-                            scope: this
-                        }
+                                    single: true
+                                },
+                                exception: {
+                                    fn: function(proxy, type, action, options, response, records) {
+                                        var msg = this.exceptionText;
+                                        if (type === "remote") {
+                                            // response is service exception
+                                            if (response.exceptionReport) {
+                                                msg = gxp.util.getOGCExceptionText(response.exceptionReport);
+                                            }
+                                        } else {
+                                            // non-200 response from server
+                                            msg = "Status: " + response.status;
+                                        }
+                                        // fire an event on the feature manager
+                                        featureManager.fireEvent("exception", featureManager, 
+                                            response.exceptionReport || {}, msg, records);
+                                        // only show dialog if there is no listener registered
+                                        if (featureManager.hasListener("exception") === false && 
+                                            featureStore.hasListener("exception") === false) {
+                                                Ext.Msg.show({
+                                                    title: this.exceptionTitle,
+                                                    msg: msg,
+                                                    icon: Ext.MessageBox.ERROR,
+                                                    buttons: {ok: true}
+                                                });
+                                        }
+                                        if (popup && popup.isVisible()) {
+                                            popup.enable();
+                                            popup.startEditing();
+                                        }
+                                    },
+                                    single: true
+                                },
+                                scope: this
+                            });                                
+                            if(feature.state === OpenLayers.State.DELETE) {
+                                /**
+                                 * If the feature state is delete, we need to
+                                 * remove it from the store (so it is collected
+                                 * in the store.removed list.  However, it should
+                                 * not be removed from the layer.  Until
+                                 * http://trac.geoext.org/ticket/141 is addressed
+                                 * we need to stop the store from removing the
+                                 * feature from the layer.
+                                 */
+                                featureStore._removing = true; // TODO: remove after http://trac.geoext.org/ticket/141
+                                featureStore.remove(featureStore.getRecordFromFeature(feature));
+                                delete featureStore._removing; // TODO: remove after http://trac.geoext.org/ticket/141
+                            }
+                            featureStore.save();
+                        },
+                        "canceledit": function(popup, feature) {
+                            featureStore.commitChanges();
+                        },
+                        scope: this
                     });
                     this.popup = popup;
                 }
@@ -67611,13 +67611,13 @@ gxp.plugins.FeatureEditor = Ext.extend(gxp.plugins.ClickableFeatures, {
             "Polygon": OpenLayers.Handler.Polygon,
             "Surface": OpenLayers.Handler.Polygon
         };
-        var simpleType = mgr.geometryType.replace("Multi", "");
-        var Handler = handlers[simpleType];
+        var simpleType = mgr.geometryType && mgr.geometryType.replace("Multi", "");
+        var Handler = simpleType && handlers[simpleType];
         if (Handler) {
             var multi = (simpleType != mgr.geometryType);
             this.setHandler(Handler, multi);
             button.enable();
-        } else if (this.supportAbstractGeometry === true && mgr.geometryType === 'Geometry') {
+        } else if (this.supportAbstractGeometry === true && mgr.geometryType && mgr.geometryType === 'Geometry') {
             button.enable();
         } else {
             button.disable();
@@ -68551,49 +68551,48 @@ gxp.plugins.FeatureGrid = Ext.extend(gxp.plugins.ClickableFeatures, {
                 },
                 scope: this
             }] : [])),
-            listeners: {
-                "added": function(cmp, ownerCt) {
-                    function onClear() {
-                        this.displayTotalResults();
-                        this.selectOnMap && this.selectControl.deactivate();
-                        this.autoCollapse && typeof ownerCt.collapse == "function" &&
-                            ownerCt.collapse();
-                    }
-                    function onPopulate() {
-                        this.displayTotalResults();
-                        this.selectOnMap && this.selectControl.activate();
-                        this.autoExpand && typeof ownerCt.expand == "function" &&
-                            ownerCt.expand();
-                    }
-                    featureManager.on({
-                        "query": function(tool, store) {
-                            if (store && store.getCount()) {
-                                onPopulate.call(this);
-                            } else {
-                                onClear.call(this);
-                            }
-                        },
-                        "layerchange": onClear,
-                        "clearfeatures": onClear,
-                        scope: this
-                    });
-                },
-                contextmenu: function(event) {
-                    if (featureGrid.contextMenu.items.getCount() > 0) {
-                        var rowIndex = featureGrid.getView().findRowIndex(event.getTarget());
-                        if (rowIndex !== false) {
-                            featureGrid.getSelectionModel().selectRow(rowIndex);
-                            featureGrid.contextMenu.showAt(event.getXY());
-                            event.stopEvent();
-                        }
-                    }
-                },
-                scope: this
-            },
             contextMenu: new Ext.menu.Menu({items: []})
         }, config || {});
         var featureGrid = gxp.plugins.FeatureGrid.superclass.addOutput.call(this, config);
-        
+        featureGrid.on({
+            "added": function(cmp, ownerCt) {
+                function onClear() {
+                    this.displayTotalResults();
+                    this.selectOnMap && this.selectControl.deactivate();
+                    this.autoCollapse && typeof ownerCt.collapse == "function" &&
+                        ownerCt.collapse();
+                }
+                function onPopulate() {
+                    this.displayTotalResults();
+                    this.selectOnMap && this.selectControl.activate();
+                    this.autoExpand && typeof ownerCt.expand == "function" &&
+                        ownerCt.expand();
+                }
+                featureManager.on({
+                    "query": function(tool, store) {
+                        if (store && store.getCount()) {
+                            onPopulate.call(this);
+                        } else {
+                            onClear.call(this);
+                        }
+                    },
+                    "layerchange": onClear,
+                    "clearfeatures": onClear,
+                    scope: this
+                });
+            },
+            contextmenu: function(event) {
+                if (featureGrid.contextMenu.items.getCount() > 0) {
+                    var rowIndex = featureGrid.getView().findRowIndex(event.getTarget());
+                    if (rowIndex !== false) {
+                        featureGrid.getSelectionModel().selectRow(rowIndex);
+                        featureGrid.contextMenu.showAt(event.getXY());
+                        event.stopEvent();
+                    }
+                }
+            },
+            scope: this
+        });
         if (this.alwaysDisplayOnMap || (this.selectOnMap === true && this.displayMode === "selected")) {
             featureManager.showLayer(this.id, this.displayMode);
         }        
@@ -73260,10 +73259,10 @@ gxp.plugins.MapQuestSource = Ext.extend(gxp.plugins.LayerSource, {
             new OpenLayers.Layer.OSM(
                 this.osmTitle,
                 [
-                    "http://otile1.mqcdn.com/tiles/1.0.0/osm/${z}/${x}/${y}.png",
-                    "http://otile2.mqcdn.com/tiles/1.0.0/osm/${z}/${x}/${y}.png",
-                    "http://otile3.mqcdn.com/tiles/1.0.0/osm/${z}/${x}/${y}.png",
-                    "http://otile4.mqcdn.com/tiles/1.0.0/osm/${z}/${x}/${y}.png"
+                    "http://otile1.mqcdn.com/tiles/1.0.0/map/${z}/${x}/${y}.png",
+                    "http://otile2.mqcdn.com/tiles/1.0.0/map/${z}/${x}/${y}.png",
+                    "http://otile3.mqcdn.com/tiles/1.0.0/map/${z}/${x}/${y}.png",
+                    "http://otile4.mqcdn.com/tiles/1.0.0/map/${z}/${x}/${y}.png"
                 ],
                 OpenLayers.Util.applyDefaults({                
                     attribution: this.osmAttribution,
@@ -73273,10 +73272,10 @@ gxp.plugins.MapQuestSource = Ext.extend(gxp.plugins.LayerSource, {
             new OpenLayers.Layer.OSM(
                 this.naipTitle,
                 [
-                    "http://oatile1.mqcdn.com/naip/${z}/${x}/${y}.png",
-                    "http://oatile2.mqcdn.com/naip/${z}/${x}/${y}.png",
-                    "http://oatile3.mqcdn.com/naip/${z}/${x}/${y}.png",
-                    "http://oatile4.mqcdn.com/naip/${z}/${x}/${y}.png"
+                    "http://otile1.mqcdn.com/tiles/1.0.0/sat/${z}/${x}/${y}.png",
+                    "http://otile2.mqcdn.com/tiles/1.0.0/sat/${z}/${x}/${y}.png",
+                    "http://otile3.mqcdn.com/tiles/1.0.0/sat/${z}/${x}/${y}.png",
+                    "http://otile4.mqcdn.com/tiles/1.0.0/sat/${z}/${x}/${y}.png"
                 ],
                 OpenLayers.Util.applyDefaults({
                     attribution: this.naipAttribution,
@@ -78568,15 +78567,15 @@ gxp.plugins.WMSGetFeatureInfo = Ext.extend(gxp.plugins.Tool, {
                     autoHeight: true,
                     autoWidth: true,
                     collapsible: true
-                },
-                listeners: {
-                    close: (function(key) {
-                        return function(panel){
-                            delete this.popupCache[key];
-                        };
-                    })(popupKey),
-                    scope: this
                 }
+            });
+            popup.on({                    
+                close: (function(key) {
+                    return function(panel){
+                        delete this.popupCache[key];
+                    };
+                })(popupKey),
+                scope: this
             });
             this.popupCache[popupKey] = popup;
         } else {
@@ -78825,7 +78824,13 @@ gxp.plugins.LayerTree = Ext.extend(gxp.plugins.Tool, {
      */
     addOutput: function(config) {
         config = Ext.apply(this.createOutputConfig(), config || {});
-        return gxp.plugins.LayerTree.superclass.addOutput.call(this, config);
+        var output = gxp.plugins.LayerTree.superclass.addOutput.call(this, config);
+        output.on({
+            contextmenu: this.handleTreeContextMenu,
+            beforemovenode: this.handleBeforeMoveNode,
+            scope: this
+        });
+        return output;
     },
     
     /** private: method[createOutputConfig]
@@ -78896,11 +78901,6 @@ gxp.plugins.LayerTree = Ext.extend(gxp.plugins.Tool, {
                     scope: this
                 }
             }),
-            listeners: {
-                contextmenu: this.handleTreeContextMenu,
-                beforemovenode: this.handleBeforeMoveNode,                
-                scope: this
-            },
             contextMenu: new Ext.menu.Menu({
                 items: []
             })
@@ -82662,26 +82662,26 @@ gxp.plugins.AddLayers = Ext.extend(gxp.plugins.Tool, {
             width: 315,
             selectedSource: selectedSource,
             xtype: 'gxp_cataloguesearchpanel',
-            map: this.target.mapPanel.map,
-            listeners: {
-                'addlayer': function(cmp, sourceKey, layerConfig) {
-                    var source = this.target.layerSources[sourceKey];
-                    var bounds = OpenLayers.Bounds.fromArray(layerConfig.bbox);
-                    var mapProjection = this.target.mapPanel.map.getProjection();
-                    var bbox = bounds.transform(layerConfig.srs, mapProjection);
-                    layerConfig.srs = mapProjection;
-                    layerConfig.bbox = bbox.toArray();
-                    layerConfig.source = this.initialConfig.catalogSourceKey !== null ? 
-                        this.initialConfig.catalogSourceKey : sourceKey;
-                    var record = source.createLayerRecord(layerConfig);
-                    this.target.mapPanel.layers.add(record);
-                    if (bbox) {
-                        this.target.mapPanel.map.zoomToExtent(bbox);
-                    }
-                },
-                scope: this
-            }
+            map: this.target.mapPanel.map
         }]);
+        output.on({
+            'addlayer': function(cmp, sourceKey, layerConfig) {
+                var source = this.target.layerSources[sourceKey];
+                var bounds = OpenLayers.Bounds.fromArray(layerConfig.bbox);
+                var mapProjection = this.target.mapPanel.map.getProjection();
+                var bbox = bounds.transform(layerConfig.srs, mapProjection);
+                layerConfig.srs = mapProjection;
+                layerConfig.bbox = bbox.toArray();
+                layerConfig.source = this.initialConfig.catalogSourceKey !== null ?
+                    this.initialConfig.catalogSourceKey : sourceKey;
+                var record = source.createLayerRecord(layerConfig);
+                this.target.mapPanel.layers.add(record);
+                if (bbox) {
+                    this.target.mapPanel.map.zoomToExtent(bbox);
+                }
+            },
+            scope: this
+        });
         var popup = output.findParentByType('window');
         popup && popup.center();
         return output;
@@ -82852,15 +82852,19 @@ gxp.plugins.AddLayers = Ext.extend(gxp.plugins.Tool, {
                 scope: this
             }
         });
-        
-        var capGridToolbar = null;
+
+        var capGridToolbar = null,
+            container;
+
         if (this.target.proxy || data.length > 1) {
-            capGridToolbar = [
-                new Ext.Toolbar.TextItem({
-                    text: this.layerSelectionText
-                }),
-                sourceComboBox
-            ];
+            container = new Ext.Container({
+                cls: 'gxp-addlayers-sourceselect',
+                items: [
+                    new Ext.Toolbar.TextItem({text: this.layerSelectionText}),
+                    sourceComboBox
+                ]
+            });
+            capGridToolbar = [container];
         }
         
         if (this.target.proxy) {
@@ -83455,7 +83459,7 @@ gxp.plugins.LayerProperties = Ext.extend(gxp.plugins.Tool, {
         if (panelConfig && panelConfig[xtype]) {
             Ext.apply(config, panelConfig[xtype]);
         }
-        return gxp.plugins.LayerProperties.superclass.addOutput.call(this, Ext.apply({
+        var output = gxp.plugins.LayerProperties.superclass.addOutput.call(this, Ext.apply({
             xtype: xtype,
             authorized: this.target.isAuthorized(),
             layerRecord: record,
@@ -83463,18 +83467,19 @@ gxp.plugins.LayerProperties = Ext.extend(gxp.plugins.Tool, {
             defaults: {
                 style: "padding: 10px",
                 autoHeight: this.outputConfig.autoHeight
-            },
-            listeners: {
-                added: function(cmp) {
-                    if (!this.outputTarget) {
-                        cmp.on("afterrender", function() {
-                            cmp.ownerCt.ownerCt.center();
-                        }, this, {single: true});
-                    }
-                },
-                scope: this
             }
         }, config));
+        output.on({
+            added: function(cmp) {
+                if (!this.outputTarget) {
+                    cmp.on("afterrender", function() {
+                        cmp.ownerCt.ownerCt.center();
+                    }, this, {single: true});
+                }
+            },
+            scope: this
+        });
+        return output;
     }
         
 });
@@ -84161,6 +84166,368 @@ gxp.plugins.Print = Ext.extend(gxp.plugins.Tool, {
 
 Ext.preg(gxp.plugins.Print.prototype.ptype, gxp.plugins.Print);
 
+/** FILE: plugins/WMSRasterStylesDialog.js **/
+/**
+ * Copyright (c) 2008-2011 The Open Planning Project
+ * 
+ * Published under the GPL license.
+ * See https://github.com/opengeo/gxp/raw/master/license.txt for the full text
+ * of the license.
+ */
+
+/**
+ * @requires util.js
+ */
+
+/** api: (define)
+ *  module = gxp.plugins
+ *  class = WMSRasterStylesDialog
+ */
+
+Ext.namespace("gxp.plugins");
+
+/** api: constructor
+ *  .. class:: WMSRasterStyleDialog(config)
+ *
+ *    This plugins extends the :class:`gxp.WMSStylesDialog` to with basic
+ *    raster support, for single-band rasters only.
+ *
+ *    TODO replace this with true raster support instead of squeezing it into
+ *    a VectorLegend as if we were dealing with vector styles.
+ */   
+gxp.plugins.WMSRasterStylesDialog = {
+    
+    /** private: property[isRaster]
+     *  ``Boolean`` Are we dealing with a raster layer with RasterSymbolizer?
+     *  This is needed because we create pseudo rules from a RasterSymbolizer's
+     *  ColorMap, and for this we need special treatment in some places.
+     */
+    isRaster: null,
+    
+    init: function(target) {
+        Ext.apply(target, gxp.plugins.WMSRasterStylesDialog);
+    },
+
+    /** private: method[createRule]
+     */
+    createRule: function() {
+        var symbolizers = [
+            new OpenLayers.Symbolizer[this.isRaster ? "Raster" : this.symbolType]
+        ];
+        return new OpenLayers.Rule({symbolizers: symbolizers});
+    },
+    
+    /** private: method[addRule]
+     */
+    addRule: function() {
+        var legend = this.items.get(2).items.get(0);
+        if (this.isRaster) {
+            legend.rules.push(this.createPseudoRule());
+            // we need either zero or at least two rules
+            legend.rules.length == 1 &&
+                legend.rules.push(this.createPseudoRule());
+            this.savePseudoRules();
+        } else {
+            this.selectedStyle.get("userStyle").rules.push(
+                this.createRule()
+            );
+            legend.update();
+            // mark the style as modified
+            this.selectedStyle.store.afterEdit(this.selectedStyle);
+        }
+        this.updateRuleRemoveButton();
+    },
+    
+    /** private: method[removeRule]
+     */
+    removeRule: function() {
+        if (this.isRaster) {
+            var legend = this.items.get(2).items.get(0);
+            var rule = this.selectedRule;
+            legend.unselect();
+            legend.rules.remove(rule);
+            // we need either zero or at least two rules
+            legend.rules.length == 1 && legend.rules.remove(legend.rules[0]);
+            this.savePseudoRules();
+        } else {
+            gxp.WMSStylesDialog.prototype.removeRule.apply(this, arguments);
+        }
+    },
+    
+    /** private: method[duplicateRule]
+     */
+    duplicateRule: function() {
+        var legend = this.items.get(2).items.get(0);
+        if (this.isRaster) {
+            legend.rules.push(this.createPseudoRule({
+                quantity: this.selectedRule.name,
+                label: this.selectedRule.title,
+                color: this.selectedRule.symbolizers[0].fillColor,
+                opacity: this.selectedRule.symbolizers[0].fillOpacity
+            }));
+            this.savePseudoRules();
+        } else {
+            var newRule = this.selectedRule.clone();
+            newRule.name = gxp.util.uniqueName(
+                (newRule.title || newRule.name) + " (copy)");
+            delete newRule.title;
+            this.selectedStyle.get("userStyle").rules.push(
+                newRule
+            );
+            legend.update();
+        }
+        this.updateRuleRemoveButton();
+    },
+    
+    editRule: function() {
+        this.isRaster ? this.editPseudoRule() :
+            gxp.WMSStylesDialog.prototype.editRule.apply(this, arguments);
+    },
+    
+    /** private: method[editPseudoRule]
+     *  Edit a pseudo rule of a RasterSymbolizer's ColorMap.
+     */
+    editPseudoRule: function() {
+        var me = this;
+        var rule = this.selectedRule;
+
+        var pseudoRuleDlg = new Ext.Window({
+            title: "Color Map Entry: " + rule.name,
+            width: 340,
+            autoHeight: true,
+            modal: true,
+            items: [{
+                bodyStyle: "padding-top: 5px",
+                border: false,
+                defaults: {
+                    autoHeight: true,
+                    hideMode: "offsets"
+                },
+                items: [{
+                    xtype: "form",
+                    border: false,
+                    labelAlign: "top",
+                    defaults: {border: false},
+                    style: {"padding": "0.3em 0 0 1em"},
+                    items: [{
+                        layout: "column",
+                        defaults: {
+                            border: false,
+                            style: {"padding-right": "1em"}
+                        },
+                        items: [{
+                            layout: "form",
+                            width: 70,
+                            items: [{
+                                xtype: "numberfield",
+                                anchor: "95%",
+                                value: rule.name,
+                                allowBlank: false,
+                                fieldLabel: "Quantity",
+                                validator: function(value) {
+                                    var rules = me.items.get(2).items.get(0).rules;
+                                    for (var i=rules.length-1; i>=0; i--) {
+                                        if (rule !== rules[i] && rules[i].name == value) {
+                                            return "Quantity " + value + " is already defined";
+                                        }
+                                    }
+                                    return true;
+                                },
+                                listeners: {
+                                    valid: function(cmp) {
+                                        this.selectedRule.name = String(cmp.getValue());
+                                        this.savePseudoRules();
+                                    },
+                                    scope: this
+                                }
+                            }]
+                        }, {
+                            layout: "form",
+                            width: 130,
+                            items: [{
+                                xtype: "textfield",
+                                fieldLabel: "Label",
+                                anchor: "95%",
+                                value: rule.title,
+                                listeners: {
+                                    valid: function(cmp) {
+                                        this.selectedRule.title = cmp.getValue();
+                                        this.savePseudoRules();
+                                    },
+                                    scope: this
+                                }
+                            }]
+                        }, {
+                            layout: "form",
+                            width: 70,
+                            items: [new GeoExt.FeatureRenderer({
+                                symbolType: this.symbolType,
+                                symbolizers: [rule.symbolizers[0]],
+                                isFormField: true,
+                                fieldLabel: "Appearance"
+                            })]
+                        }]
+                    }]
+                }, {
+                    xtype: "gxp_polygonsymbolizer",
+                    symbolizer: rule.symbolizers[0],
+                    bodyStyle: {"padding": "10px"},
+                    border: false,
+                    labelWidth: 70,
+                    defaults: {
+                        labelWidth: 70
+                    },
+                    listeners: {
+                        change: function(symbolizer) {
+                            var symbolizerSwatch = pseudoRuleDlg.findByType(GeoExt.FeatureRenderer)[0];
+                            symbolizerSwatch.setSymbolizers(
+                                [symbolizer], {draw: symbolizerSwatch.rendered}
+                            );
+                            this.selectedRule.symbolizers[0] = symbolizer;
+                            this.savePseudoRules();
+                        },
+                        scope: this
+                    }
+                }]
+            }]
+        });
+        // remove stroke fieldset
+        var strokeSymbolizer = pseudoRuleDlg.findByType("gxp_strokesymbolizer")[0];
+        strokeSymbolizer.ownerCt.remove(strokeSymbolizer);
+        
+        pseudoRuleDlg.show();
+    },
+    
+    /** private: method[savePseudoRules]
+     *  Takes the pseudo rules from the legend and adds them as
+     *  RasterSymbolizer ColorMap back to the userStyle.
+     */
+    savePseudoRules: function() {
+        var style = this.selectedStyle;
+        var legend = this.items.get(2).items.get(0);
+        var userStyle = style.get("userStyle");
+        
+        var pseudoRules = legend.rules;
+        pseudoRules.sort(function(a,b) {
+            var left = parseFloat(a.name);
+            var right = parseFloat(b.name);
+            return left === right ? 0 : (left < right ? -1 : 1);
+        });
+        
+        var symbolizer = userStyle.rules[0].symbolizers[0];
+        symbolizer.colorMap = pseudoRules.length > 0 ?
+            new Array(pseudoRules.length) : undefined;
+        var pseudoRule;
+        for (var i=0, len=pseudoRules.length; i<len; ++i) {
+            pseudoRule = pseudoRules[i];
+            symbolizer.colorMap[i] = {
+                quantity: parseFloat(pseudoRule.name),
+                label: pseudoRule.title || undefined,
+                color: pseudoRule.symbolizers[0].fillColor || undefined,
+                opacity: pseudoRule.symbolizers[0].fill == false ? 0 :
+                    pseudoRule.symbolizers[0].fillOpacity
+            };
+        }
+        this.afterRuleChange(this.selectedRule);
+    },
+    
+    /** private: method[createLegend]
+     *  :arg rules: ``Array``
+     *  :arg options:
+     */
+    createLegend: function(rules, options) {
+        var R = OpenLayers.Symbolizer.Raster;
+        if (R && rules[0] && rules[0].symbolizers[0] instanceof R) {
+            this.getComponent("rulesfieldset").setTitle("Color Map Entries");
+            this.isRaster = true;
+            this.addRasterLegend(rules, options);
+        } else {
+            this.isRaster = false;
+            this.addVectorLegend(rules);
+        }
+    },    
+
+    /** private: method[addRasterLegend]
+     *  :arg rules: ``Array``
+     *  :arg options: ``Object`` Additional options for this method.
+     *  :returns: ``GeoExt.VectorLegend`` the legend that was created
+     *
+     *  Creates the vector legend for the pseudo rules that are created from
+     *  the RasterSymbolizer of the first rule and adds it to the rules
+     *  fieldset.
+     *  
+     *  Supported options:
+     *
+     *  * selectedRuleIndex: ``Number`` The index of a pseudo rule to select
+     *    in the legend.
+     */  
+    addRasterLegend: function(rules, options) {
+        options = options || {};
+        //TODO raster styling support is currently limited to one rule, and
+        // we can only handle a color map. No band selection and other stuff.
+        var symbolizer = rules[0].symbolizers[0];
+        var colorMap = symbolizer.colorMap || [];
+        var pseudoRules = [];
+        var colorMapEntry;
+        for (var i=0, len=colorMap.length; i<len; i++) {
+            pseudoRules.push(this.createPseudoRule(colorMap[i]));
+        }
+        this.selectedRule = options.selectedRuleIndex != null ?
+            pseudoRules[options.selectedRuleIndex] : null;
+        return this.addVectorLegend(pseudoRules, {
+            symbolType: "Polygon",
+            enableDD: false
+        });
+    },
+    
+    /** private: method[createPseudoRule]
+     *  :arg colorMapEntry: ``Object``
+     *  
+     *  Creates a pseudo rule from a ColorMapEntry.
+     */
+    createPseudoRule: function(colorMapEntry) {
+        var quantity = -1;
+        if (!colorMapEntry) {
+            var fieldset = this.items.get(2);
+            if (fieldset.items) {
+                rules = fieldset.items.get(0).rules;
+                for (var i=rules.length-1; i>=0; i--) {
+                    quantity = Math.max(quantity, parseFloat(rules[i].name));
+                }            
+            }
+        }
+        colorMapEntry = Ext.applyIf(colorMapEntry || {}, {
+            quantity: ++quantity,
+            color: "#000000",
+            opacity: 1
+        });
+        return new OpenLayers.Rule({
+            title: colorMapEntry.label,
+            name: String(colorMapEntry.quantity),
+            symbolizers: [new OpenLayers.Symbolizer.Polygon({
+                fillColor: colorMapEntry.color,
+                fillOpacity: colorMapEntry.opacity,
+                stroke: false,
+                fill: colorMapEntry.opacity !== 0
+            })]
+        });
+    },
+
+    /** private: method[updateRuleRemoveButton]
+     *  Enable/disable the "Remove" button to make sure that we don't delete
+     *  the last rule.
+     */
+    updateRuleRemoveButton: function() {
+        this.items.get(3).items.get(1).setDisabled(!this.selectedRule ||
+            (this.isRaster === false &&
+            this.items.get(2).items.get(0).rules.length <= 1));
+    }
+    
+};
+
+/** api: ptype = gxp_wmsrasterstylesdialog */
+Ext.preg("gxp_wmsrasterstylesdialog", gxp.plugins.WMSRasterStylesDialog);
+
 /** FILE: plugins/Styler.js **/
 /**
  * Copyright (c) 2008-2011 The Open Planning Project
@@ -84174,6 +84541,7 @@ Ext.preg(gxp.plugins.Print.prototype.ptype, gxp.plugins.Print);
  * @requires plugins/Tool.js
  * @requires widgets/WMSStylesDialog.js
  * @requires plugins/GeoServerStyleWriter.js
+ * @requires plugins/WMSRasterStylesDialog.js
  */
 
 /** api: (define)
