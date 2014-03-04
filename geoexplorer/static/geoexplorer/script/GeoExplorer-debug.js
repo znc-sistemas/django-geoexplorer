@@ -23932,7 +23932,8 @@ OpenLayers.Format.WFST.v1 = OpenLayers.Class(OpenLayers.Format.XML, {
         wfs: "http://www.opengis.net/wfs",
         gml: "http://www.opengis.net/gml",
         ogc: "http://www.opengis.net/ogc",
-        ows: "http://www.opengis.net/ows"
+        ows: "http://www.opengis.net/ows",
+        xmlns: "http://www.w3.org/2000/xmlns/"
     },
     
     /**
@@ -24223,7 +24224,10 @@ OpenLayers.Format.WFST.v1 = OpenLayers.Class(OpenLayers.Format.XML, {
                     }
                 });
                 if(this.featureNS) {
-                    node.setAttribute("xmlns:" + this.featurePrefix, this.featureNS);
+                    this.setAttributeNS(
+                        node, this.namespaces.xmlns,
+                        "xmlns:" + this.featurePrefix, this.featureNS
+                    );
                 }
                 
                 // add in geometry
@@ -24286,7 +24290,10 @@ OpenLayers.Format.WFST.v1 = OpenLayers.Class(OpenLayers.Format.XML, {
                     }
                 });
                 if(this.featureNS) {
-                    node.setAttribute("xmlns:" + this.featurePrefix, this.featureNS);
+                    this.setAttributeNS(
+                        node, this.namespaces.xmlns,
+                        "xmlns:" + this.featurePrefix, this.featureNS
+                    );
                 }
                 this.writeNode("ogc:Filter", new OpenLayers.Filter.FeatureId({
                     fids: [feature.fid]
@@ -25196,7 +25203,8 @@ OpenLayers.Format.WFST.v1_1_0 = OpenLayers.Class(
                     }
                 });
                 if(options.featureNS) {
-                    node.setAttribute("xmlns:" + prefix, options.featureNS);
+                    this.setAttributeNS(node, this.namespaces.xmlns,
+                        "xmlns:" + prefix, options.featureNS);
                 }
                 if(options.propertyNames) {
                     for(var i=0,len = options.propertyNames.length; i<len; i++) {
@@ -25295,6 +25303,608 @@ OpenLayers.Protocol.WFS.v1_1_0 = OpenLayers.Class(OpenLayers.Protocol.WFS.v1, {
     },
    
     CLASS_NAME: "OpenLayers.Protocol.WFS.v1_1_0"
+});
+
+/** FILE: OpenLayers/Control.js **/
+/* Copyright (c) 2006-2013 by OpenLayers Contributors (see authors.txt for
+ * full list of contributors). Published under the 2-clause BSD license.
+ * See license.txt in the OpenLayers distribution or repository for the
+ * full text of the license. */
+
+/**
+ * @requires OpenLayers/BaseTypes/Class.js
+ */
+
+/**
+ * Class: OpenLayers.Control
+ * Controls affect the display or behavior of the map. They allow everything
+ * from panning and zooming to displaying a scale indicator. Controls by 
+ * default are added to the map they are contained within however it is
+ * possible to add a control to an external div by passing the div in the
+ * options parameter.
+ * 
+ * Example:
+ * The following example shows how to add many of the common controls
+ * to a map.
+ * 
+ * > var map = new OpenLayers.Map('map', { controls: [] });
+ * >
+ * > map.addControl(new OpenLayers.Control.PanZoomBar());
+ * > map.addControl(new OpenLayers.Control.LayerSwitcher({'ascending':false}));
+ * > map.addControl(new OpenLayers.Control.Permalink());
+ * > map.addControl(new OpenLayers.Control.Permalink('permalink'));
+ * > map.addControl(new OpenLayers.Control.MousePosition());
+ * > map.addControl(new OpenLayers.Control.OverviewMap());
+ * > map.addControl(new OpenLayers.Control.KeyboardDefaults());
+ *
+ * The next code fragment is a quick example of how to intercept 
+ * shift-mouse click to display the extent of the bounding box
+ * dragged out by the user.  Usually controls are not created
+ * in exactly this manner.  See the source for a more complete 
+ * example:
+ *
+ * > var control = new OpenLayers.Control();
+ * > OpenLayers.Util.extend(control, {
+ * >     draw: function () {
+ * >         // this Handler.Box will intercept the shift-mousedown
+ * >         // before Control.MouseDefault gets to see it
+ * >         this.box = new OpenLayers.Handler.Box( control, 
+ * >             {"done": this.notice},
+ * >             {keyMask: OpenLayers.Handler.MOD_SHIFT});
+ * >         this.box.activate();
+ * >     },
+ * >
+ * >     notice: function (bounds) {
+ * >         OpenLayers.Console.userError(bounds);
+ * >     }
+ * > }); 
+ * > map.addControl(control);
+ * 
+ */
+OpenLayers.Control = OpenLayers.Class({
+
+    /** 
+     * Property: id 
+     * {String} 
+     */
+    id: null,
+    
+    /** 
+     * Property: map 
+     * {<OpenLayers.Map>} this gets set in the addControl() function in
+     * OpenLayers.Map 
+     */
+    map: null,
+
+    /** 
+     * APIProperty: div 
+     * {DOMElement} The element that contains the control, if not present the 
+     *     control is placed inside the map.
+     */
+    div: null,
+
+    /** 
+     * APIProperty: type 
+     * {Number} Controls can have a 'type'. The type determines the type of
+     * interactions which are possible with them when they are placed in an
+     * <OpenLayers.Control.Panel>. 
+     */
+    type: null, 
+
+    /** 
+     * Property: allowSelection
+     * {Boolean} By default, controls do not allow selection, because
+     * it may interfere with map dragging. If this is true, OpenLayers
+     * will not prevent selection of the control.
+     * Default is false.
+     */
+    allowSelection: false,  
+
+    /** 
+     * Property: displayClass 
+     * {string}  This property is used for CSS related to the drawing of the
+     * Control. 
+     */
+    displayClass: "",
+    
+    /**
+    * APIProperty: title  
+    * {string}  This property is used for showing a tooltip over the  
+    * Control.  
+    */ 
+    title: "",
+
+    /**
+     * APIProperty: autoActivate
+     * {Boolean} Activate the control when it is added to a map.  Default is
+     *     false.
+     */
+    autoActivate: false,
+
+    /** 
+     * APIProperty: active 
+     * {Boolean} The control is active (read-only).  Use <activate> and 
+     *     <deactivate> to change control state.
+     */
+    active: null,
+
+    /**
+     * Property: handlerOptions
+     * {Object} Used to set non-default properties on the control's handler
+     */
+    handlerOptions: null,
+
+    /** 
+     * Property: handler 
+     * {<OpenLayers.Handler>} null
+     */
+    handler: null,
+
+    /**
+     * APIProperty: eventListeners
+     * {Object} If set as an option at construction, the eventListeners
+     *     object will be registered with <OpenLayers.Events.on>.  Object
+     *     structure must be a listeners object as shown in the example for
+     *     the events.on method.
+     */
+    eventListeners: null,
+
+    /** 
+     * APIProperty: events
+     * {<OpenLayers.Events>} Events instance for listeners and triggering
+     *     control specific events.
+     *
+     * Register a listener for a particular event with the following syntax:
+     * (code)
+     * control.events.register(type, obj, listener);
+     * (end)
+     *
+     * Listeners will be called with a reference to an event object.  The
+     *     properties of this event depends on exactly what happened.
+     *
+     * All event objects have at least the following properties:
+     * object - {Object} A reference to control.events.object (a reference
+     *      to the control).
+     * element - {DOMElement} A reference to control.events.element (which
+     *      will be null unless documented otherwise).
+     *
+     * Supported map event types:
+     * activate - Triggered when activated.
+     * deactivate - Triggered when deactivated.
+     */
+    events: null,
+
+    /**
+     * Constructor: OpenLayers.Control
+     * Create an OpenLayers Control.  The options passed as a parameter
+     * directly extend the control.  For example passing the following:
+     * 
+     * > var control = new OpenLayers.Control({div: myDiv});
+     *
+     * Overrides the default div attribute value of null.
+     * 
+     * Parameters:
+     * options - {Object} 
+     */
+    initialize: function (options) {
+        // We do this before the extend so that instances can override
+        // className in options.
+        this.displayClass = 
+            this.CLASS_NAME.replace("OpenLayers.", "ol").replace(/\./g, "");
+        
+        OpenLayers.Util.extend(this, options);
+        
+        this.events = new OpenLayers.Events(this);
+        if(this.eventListeners instanceof Object) {
+            this.events.on(this.eventListeners);
+        }
+        if (this.id == null) {
+            this.id = OpenLayers.Util.createUniqueID(this.CLASS_NAME + "_");
+        }
+    },
+
+    /**
+     * Method: destroy
+     * The destroy method is used to perform any clean up before the control
+     * is dereferenced.  Typically this is where event listeners are removed
+     * to prevent memory leaks.
+     */
+    destroy: function () {
+        if(this.events) {
+            if(this.eventListeners) {
+                this.events.un(this.eventListeners);
+            }
+            this.events.destroy();
+            this.events = null;
+        }
+        this.eventListeners = null;
+
+        // eliminate circular references
+        if (this.handler) {
+            this.handler.destroy();
+            this.handler = null;
+        }
+        if(this.handlers) {
+            for(var key in this.handlers) {
+                if(this.handlers.hasOwnProperty(key) &&
+                   typeof this.handlers[key].destroy == "function") {
+                    this.handlers[key].destroy();
+                }
+            }
+            this.handlers = null;
+        }
+        if (this.map) {
+            this.map.removeControl(this);
+            this.map = null;
+        }
+        this.div = null;
+    },
+
+    /** 
+     * Method: setMap
+     * Set the map property for the control. This is done through an accessor
+     * so that subclasses can override this and take special action once 
+     * they have their map variable set. 
+     *
+     * Parameters:
+     * map - {<OpenLayers.Map>} 
+     */
+    setMap: function(map) {
+        this.map = map;
+        if (this.handler) {
+            this.handler.setMap(map);
+        }
+    },
+  
+    /**
+     * Method: draw
+     * The draw method is called when the control is ready to be displayed
+     * on the page.  If a div has not been created one is created.  Controls
+     * with a visual component will almost always want to override this method 
+     * to customize the look of control. 
+     *
+     * Parameters:
+     * px - {<OpenLayers.Pixel>} The top-left pixel position of the control
+     *      or null.
+     *
+     * Returns:
+     * {DOMElement} A reference to the DIV DOMElement containing the control
+     */
+    draw: function (px) {
+        if (this.div == null) {
+            this.div = OpenLayers.Util.createDiv(this.id);
+            this.div.className = this.displayClass;
+            if (!this.allowSelection) {
+                this.div.className += " olControlNoSelect";
+                this.div.setAttribute("unselectable", "on", 0);
+                this.div.onselectstart = OpenLayers.Function.False; 
+            }    
+            if (this.title != "") {
+                this.div.title = this.title;
+            }
+        }
+        if (px != null) {
+            this.position = px.clone();
+        }
+        this.moveTo(this.position);
+        return this.div;
+    },
+
+    /**
+     * Method: moveTo
+     * Sets the left and top style attributes to the passed in pixel 
+     * coordinates.
+     *
+     * Parameters:
+     * px - {<OpenLayers.Pixel>}
+     */
+    moveTo: function (px) {
+        if ((px != null) && (this.div != null)) {
+            this.div.style.left = px.x + "px";
+            this.div.style.top = px.y + "px";
+        }
+    },
+
+    /**
+     * APIMethod: activate
+     * Explicitly activates a control and it's associated
+     * handler if one has been set.  Controls can be
+     * deactivated by calling the deactivate() method.
+     * 
+     * Returns:
+     * {Boolean}  True if the control was successfully activated or
+     *            false if the control was already active.
+     */
+    activate: function () {
+        if (this.active) {
+            return false;
+        }
+        if (this.handler) {
+            this.handler.activate();
+        }
+        this.active = true;
+        if(this.map) {
+            OpenLayers.Element.addClass(
+                this.map.viewPortDiv,
+                this.displayClass.replace(/ /g, "") + "Active"
+            );
+        }
+        this.events.triggerEvent("activate");
+        return true;
+    },
+    
+    /**
+     * APIMethod: deactivate
+     * Deactivates a control and it's associated handler if any.  The exact
+     * effect of this depends on the control itself.
+     * 
+     * Returns:
+     * {Boolean} True if the control was effectively deactivated or false
+     *           if the control was already inactive.
+     */
+    deactivate: function () {
+        if (this.active) {
+            if (this.handler) {
+                this.handler.deactivate();
+            }
+            this.active = false;
+            if(this.map) {
+                OpenLayers.Element.removeClass(
+                    this.map.viewPortDiv,
+                    this.displayClass.replace(/ /g, "") + "Active"
+                );
+            }
+            this.events.triggerEvent("deactivate");
+            return true;
+        }
+        return false;
+    },
+
+    CLASS_NAME: "OpenLayers.Control"
+});
+
+/**
+ * Constant: OpenLayers.Control.TYPE_BUTTON
+ */
+OpenLayers.Control.TYPE_BUTTON = 1;
+
+/**
+ * Constant: OpenLayers.Control.TYPE_TOGGLE
+ */
+OpenLayers.Control.TYPE_TOGGLE = 2;
+
+/**
+ * Constant: OpenLayers.Control.TYPE_TOOL
+ */
+OpenLayers.Control.TYPE_TOOL   = 3;
+
+/** FILE: OpenLayers/Control/MousePosition.js **/
+/* Copyright (c) 2006-2013 by OpenLayers Contributors (see authors.txt for
+ * full list of contributors). Published under the 2-clause BSD license.
+ * See license.txt in the OpenLayers distribution or repository for the
+ * full text of the license. */
+
+
+/**
+ * @requires OpenLayers/Control.js
+ */
+
+/**
+ * Class: OpenLayers.Control.MousePosition
+ * The MousePosition control displays geographic coordinates of the mouse
+ * pointer, as it is moved about the map.
+ *
+ * You can use the <prefix>- or <suffix>-properties to provide more information
+ * about the displayed coordinates to the user:
+ *
+ * (code)
+ *     var mousePositionCtrl = new OpenLayers.Control.MousePosition({
+ *         prefix: '<a target="_blank" ' +
+ *             'href="http://spatialreference.org/ref/epsg/4326/">' +
+ *             'EPSG:4326</a> coordinates: '
+ *         }
+ *     );
+ * (end code)
+ *
+ * Inherits from:
+ *  - <OpenLayers.Control>
+ */
+OpenLayers.Control.MousePosition = OpenLayers.Class(OpenLayers.Control, {
+
+    /**
+     * APIProperty: autoActivate
+     * {Boolean} Activate the control when it is added to a map.  Default is
+     *     true.
+     */
+    autoActivate: true,
+
+    /**
+     * Property: element
+     * {DOMElement}
+     */
+    element: null,
+
+    /**
+     * APIProperty: prefix
+     * {String} A string to be prepended to the current pointers coordinates
+     *     when it is rendered.  Defaults to the empty string ''.
+     */
+    prefix: '',
+
+    /**
+     * APIProperty: separator
+     * {String} A string to be used to seperate the two coordinates from each
+     *     other.  Defaults to the string ', ', which will result in a
+     *     rendered coordinate of e.g. '42.12, 21.22'.
+     */
+    separator: ', ',
+
+    /**
+     * APIProperty: suffix
+     * {String} A string to be appended to the current pointers coordinates
+     *     when it is rendered.  Defaults to the empty string ''.
+     */
+    suffix: '',
+
+    /**
+     * APIProperty: numDigits
+     * {Integer} The number of digits each coordinate shall have when being
+     *     rendered, Defaults to 5.
+     */
+    numDigits: 5,
+
+    /**
+     * APIProperty: granularity
+     * {Integer}
+     */
+    granularity: 10,
+
+    /**
+     * APIProperty: emptyString
+     * {String} Set this to some value to set when the mouse is outside the
+     *     map.
+     */
+    emptyString: null,
+
+    /**
+     * Property: lastXy
+     * {<OpenLayers.Pixel>}
+     */
+    lastXy: null,
+
+    /**
+     * APIProperty: displayProjection
+     * {<OpenLayers.Projection>} The projection in which the mouse position is
+     *     displayed.
+     */
+    displayProjection: null,
+
+    /**
+     * Constructor: OpenLayers.Control.MousePosition
+     *
+     * Parameters:
+     * options - {Object} Options for control.
+     */
+
+    /**
+     * Method: destroy
+     */
+     destroy: function() {
+         this.deactivate();
+         OpenLayers.Control.prototype.destroy.apply(this, arguments);
+     },
+
+    /**
+     * APIMethod: activate
+     */
+    activate: function() {
+        if (OpenLayers.Control.prototype.activate.apply(this, arguments)) {
+            this.map.events.register('mousemove', this, this.redraw);
+            this.map.events.register('mouseout', this, this.reset);
+            this.redraw();
+            return true;
+        } else {
+            return false;
+        }
+    },
+
+    /**
+     * APIMethod: deactivate
+     */
+    deactivate: function() {
+        if (OpenLayers.Control.prototype.deactivate.apply(this, arguments)) {
+            this.map.events.unregister('mousemove', this, this.redraw);
+            this.map.events.unregister('mouseout', this, this.reset);
+            this.element.innerHTML = "";
+            return true;
+        } else {
+            return false;
+        }
+    },
+
+    /**
+     * Method: draw
+     * {DOMElement}
+     */
+    draw: function() {
+        OpenLayers.Control.prototype.draw.apply(this, arguments);
+
+        if (!this.element) {
+            this.div.left = "";
+            this.div.top = "";
+            this.element = this.div;
+        }
+
+        return this.div;
+    },
+
+    /**
+     * Method: redraw
+     */
+    redraw: function(evt) {
+
+        var lonLat;
+
+        if (evt == null) {
+            this.reset();
+            return;
+        } else {
+            if (this.lastXy == null ||
+                Math.abs(evt.xy.x - this.lastXy.x) > this.granularity ||
+                Math.abs(evt.xy.y - this.lastXy.y) > this.granularity)
+            {
+                this.lastXy = evt.xy;
+                return;
+            }
+
+            lonLat = this.map.getLonLatFromPixel(evt.xy);
+            if (!lonLat) {
+                // map has not yet been properly initialized
+                return;
+            }
+            if (this.displayProjection) {
+                lonLat.transform(this.map.getProjectionObject(),
+                                 this.displayProjection );
+            }
+            this.lastXy = evt.xy;
+
+        }
+
+        var newHtml = this.formatOutput(lonLat);
+
+        if (newHtml != this.element.innerHTML) {
+            this.element.innerHTML = newHtml;
+        }
+    },
+
+    /**
+     * Method: reset
+     */
+    reset: function(evt) {
+        if (this.emptyString != null) {
+            this.element.innerHTML = this.emptyString;
+        }
+    },
+
+    /**
+     * Method: formatOutput
+     * Override to provide custom display output
+     *
+     * Parameters:
+     * lonLat - {<OpenLayers.LonLat>} Location to display
+     */
+    formatOutput: function(lonLat) {
+        var digits = parseInt(this.numDigits);
+        var newHtml =
+            this.prefix +
+            lonLat.lon.toFixed(digits) +
+            this.separator +
+            lonLat.lat.toFixed(digits) +
+            this.suffix;
+        return newHtml;
+    },
+
+    CLASS_NAME: "OpenLayers.Control.MousePosition"
 });
 
 /** FILE: GeoExt/data/LayerRecord.js **/
@@ -25457,7 +26067,7 @@ GeoExt.data.AttributeStoreMixin = function() {
                     reader: new GeoExt.data.AttributeReader(
                         c, c.fields || ["name", "type", "restriction", {
                             name: "nillable", type: "boolean"
-                        }]
+                        }, "annotation"]
                     )
                 })
             );
@@ -25683,7 +26293,11 @@ Ext.extend(GeoExt.data.AttributeReader, Ext.data.DataReader, {
             attributes = data;
         } else {
             // only works with one featureType in the doc
-            attributes = this.meta.format.read(data).featureTypes[0].properties;
+            var output = this.meta.format.read(data);
+            if (!!output.error) {
+                throw new Ext.data.DataReader.Error("invalid-response", output.error);
+            }
+            attributes = output.featureTypes[0].properties;
         }
         var feature = this.meta.feature;
         var recordType = this.recordType;
@@ -25869,7 +26483,17 @@ Ext.extend(GeoExt.data.ProtocolProxy, Ext.data.DataProxy, {
      */
     loadResponse: function(o, response) {
         if (response.success()) {
-            var result = o.reader.read(response);
+            var result;
+            try {
+                result = o.reader.read(response);
+            } catch(e) {
+                // @deprecated: fire old loadexception for backwards-compat.
+                // TODO remove
+                this.fireEvent('loadexception', this, o, response, e);
+                this.fireEvent('exception', this, 'response', null, o, response, e);
+                o.request.callback.call(o.request.scope, null, o.request.arg, false);
+                return;
+            }
             this.fireEvent("load", this, o, o.request.arg);
             o.request.callback.call(
                o.request.scope, result, o.request.arg, true);
@@ -26949,379 +27573,6 @@ GeoExt.plugins.PrintProviderField = Ext.extend(Ext.util.Observable, {
 /** api: ptype = gx_printproviderfield */
 Ext.preg("gx_printproviderfield", GeoExt.plugins.PrintProviderField);
 
-/** FILE: OpenLayers/Control.js **/
-/* Copyright (c) 2006-2013 by OpenLayers Contributors (see authors.txt for
- * full list of contributors). Published under the 2-clause BSD license.
- * See license.txt in the OpenLayers distribution or repository for the
- * full text of the license. */
-
-/**
- * @requires OpenLayers/BaseTypes/Class.js
- */
-
-/**
- * Class: OpenLayers.Control
- * Controls affect the display or behavior of the map. They allow everything
- * from panning and zooming to displaying a scale indicator. Controls by 
- * default are added to the map they are contained within however it is
- * possible to add a control to an external div by passing the div in the
- * options parameter.
- * 
- * Example:
- * The following example shows how to add many of the common controls
- * to a map.
- * 
- * > var map = new OpenLayers.Map('map', { controls: [] });
- * >
- * > map.addControl(new OpenLayers.Control.PanZoomBar());
- * > map.addControl(new OpenLayers.Control.LayerSwitcher({'ascending':false}));
- * > map.addControl(new OpenLayers.Control.Permalink());
- * > map.addControl(new OpenLayers.Control.Permalink('permalink'));
- * > map.addControl(new OpenLayers.Control.MousePosition());
- * > map.addControl(new OpenLayers.Control.OverviewMap());
- * > map.addControl(new OpenLayers.Control.KeyboardDefaults());
- *
- * The next code fragment is a quick example of how to intercept 
- * shift-mouse click to display the extent of the bounding box
- * dragged out by the user.  Usually controls are not created
- * in exactly this manner.  See the source for a more complete 
- * example:
- *
- * > var control = new OpenLayers.Control();
- * > OpenLayers.Util.extend(control, {
- * >     draw: function () {
- * >         // this Handler.Box will intercept the shift-mousedown
- * >         // before Control.MouseDefault gets to see it
- * >         this.box = new OpenLayers.Handler.Box( control, 
- * >             {"done": this.notice},
- * >             {keyMask: OpenLayers.Handler.MOD_SHIFT});
- * >         this.box.activate();
- * >     },
- * >
- * >     notice: function (bounds) {
- * >         OpenLayers.Console.userError(bounds);
- * >     }
- * > }); 
- * > map.addControl(control);
- * 
- */
-OpenLayers.Control = OpenLayers.Class({
-
-    /** 
-     * Property: id 
-     * {String} 
-     */
-    id: null,
-    
-    /** 
-     * Property: map 
-     * {<OpenLayers.Map>} this gets set in the addControl() function in
-     * OpenLayers.Map 
-     */
-    map: null,
-
-    /** 
-     * APIProperty: div 
-     * {DOMElement} The element that contains the control, if not present the 
-     *     control is placed inside the map.
-     */
-    div: null,
-
-    /** 
-     * APIProperty: type 
-     * {Number} Controls can have a 'type'. The type determines the type of
-     * interactions which are possible with them when they are placed in an
-     * <OpenLayers.Control.Panel>. 
-     */
-    type: null, 
-
-    /** 
-     * Property: allowSelection
-     * {Boolean} By default, controls do not allow selection, because
-     * it may interfere with map dragging. If this is true, OpenLayers
-     * will not prevent selection of the control.
-     * Default is false.
-     */
-    allowSelection: false,  
-
-    /** 
-     * Property: displayClass 
-     * {string}  This property is used for CSS related to the drawing of the
-     * Control. 
-     */
-    displayClass: "",
-    
-    /**
-    * APIProperty: title  
-    * {string}  This property is used for showing a tooltip over the  
-    * Control.  
-    */ 
-    title: "",
-
-    /**
-     * APIProperty: autoActivate
-     * {Boolean} Activate the control when it is added to a map.  Default is
-     *     false.
-     */
-    autoActivate: false,
-
-    /** 
-     * APIProperty: active 
-     * {Boolean} The control is active (read-only).  Use <activate> and 
-     *     <deactivate> to change control state.
-     */
-    active: null,
-
-    /**
-     * Property: handlerOptions
-     * {Object} Used to set non-default properties on the control's handler
-     */
-    handlerOptions: null,
-
-    /** 
-     * Property: handler 
-     * {<OpenLayers.Handler>} null
-     */
-    handler: null,
-
-    /**
-     * APIProperty: eventListeners
-     * {Object} If set as an option at construction, the eventListeners
-     *     object will be registered with <OpenLayers.Events.on>.  Object
-     *     structure must be a listeners object as shown in the example for
-     *     the events.on method.
-     */
-    eventListeners: null,
-
-    /** 
-     * APIProperty: events
-     * {<OpenLayers.Events>} Events instance for listeners and triggering
-     *     control specific events.
-     *
-     * Register a listener for a particular event with the following syntax:
-     * (code)
-     * control.events.register(type, obj, listener);
-     * (end)
-     *
-     * Listeners will be called with a reference to an event object.  The
-     *     properties of this event depends on exactly what happened.
-     *
-     * All event objects have at least the following properties:
-     * object - {Object} A reference to control.events.object (a reference
-     *      to the control).
-     * element - {DOMElement} A reference to control.events.element (which
-     *      will be null unless documented otherwise).
-     *
-     * Supported map event types:
-     * activate - Triggered when activated.
-     * deactivate - Triggered when deactivated.
-     */
-    events: null,
-
-    /**
-     * Constructor: OpenLayers.Control
-     * Create an OpenLayers Control.  The options passed as a parameter
-     * directly extend the control.  For example passing the following:
-     * 
-     * > var control = new OpenLayers.Control({div: myDiv});
-     *
-     * Overrides the default div attribute value of null.
-     * 
-     * Parameters:
-     * options - {Object} 
-     */
-    initialize: function (options) {
-        // We do this before the extend so that instances can override
-        // className in options.
-        this.displayClass = 
-            this.CLASS_NAME.replace("OpenLayers.", "ol").replace(/\./g, "");
-        
-        OpenLayers.Util.extend(this, options);
-        
-        this.events = new OpenLayers.Events(this);
-        if(this.eventListeners instanceof Object) {
-            this.events.on(this.eventListeners);
-        }
-        if (this.id == null) {
-            this.id = OpenLayers.Util.createUniqueID(this.CLASS_NAME + "_");
-        }
-    },
-
-    /**
-     * Method: destroy
-     * The destroy method is used to perform any clean up before the control
-     * is dereferenced.  Typically this is where event listeners are removed
-     * to prevent memory leaks.
-     */
-    destroy: function () {
-        if(this.events) {
-            if(this.eventListeners) {
-                this.events.un(this.eventListeners);
-            }
-            this.events.destroy();
-            this.events = null;
-        }
-        this.eventListeners = null;
-
-        // eliminate circular references
-        if (this.handler) {
-            this.handler.destroy();
-            this.handler = null;
-        }
-        if(this.handlers) {
-            for(var key in this.handlers) {
-                if(this.handlers.hasOwnProperty(key) &&
-                   typeof this.handlers[key].destroy == "function") {
-                    this.handlers[key].destroy();
-                }
-            }
-            this.handlers = null;
-        }
-        if (this.map) {
-            this.map.removeControl(this);
-            this.map = null;
-        }
-        this.div = null;
-    },
-
-    /** 
-     * Method: setMap
-     * Set the map property for the control. This is done through an accessor
-     * so that subclasses can override this and take special action once 
-     * they have their map variable set. 
-     *
-     * Parameters:
-     * map - {<OpenLayers.Map>} 
-     */
-    setMap: function(map) {
-        this.map = map;
-        if (this.handler) {
-            this.handler.setMap(map);
-        }
-    },
-  
-    /**
-     * Method: draw
-     * The draw method is called when the control is ready to be displayed
-     * on the page.  If a div has not been created one is created.  Controls
-     * with a visual component will almost always want to override this method 
-     * to customize the look of control. 
-     *
-     * Parameters:
-     * px - {<OpenLayers.Pixel>} The top-left pixel position of the control
-     *      or null.
-     *
-     * Returns:
-     * {DOMElement} A reference to the DIV DOMElement containing the control
-     */
-    draw: function (px) {
-        if (this.div == null) {
-            this.div = OpenLayers.Util.createDiv(this.id);
-            this.div.className = this.displayClass;
-            if (!this.allowSelection) {
-                this.div.className += " olControlNoSelect";
-                this.div.setAttribute("unselectable", "on", 0);
-                this.div.onselectstart = OpenLayers.Function.False; 
-            }    
-            if (this.title != "") {
-                this.div.title = this.title;
-            }
-        }
-        if (px != null) {
-            this.position = px.clone();
-        }
-        this.moveTo(this.position);
-        return this.div;
-    },
-
-    /**
-     * Method: moveTo
-     * Sets the left and top style attributes to the passed in pixel 
-     * coordinates.
-     *
-     * Parameters:
-     * px - {<OpenLayers.Pixel>}
-     */
-    moveTo: function (px) {
-        if ((px != null) && (this.div != null)) {
-            this.div.style.left = px.x + "px";
-            this.div.style.top = px.y + "px";
-        }
-    },
-
-    /**
-     * APIMethod: activate
-     * Explicitly activates a control and it's associated
-     * handler if one has been set.  Controls can be
-     * deactivated by calling the deactivate() method.
-     * 
-     * Returns:
-     * {Boolean}  True if the control was successfully activated or
-     *            false if the control was already active.
-     */
-    activate: function () {
-        if (this.active) {
-            return false;
-        }
-        if (this.handler) {
-            this.handler.activate();
-        }
-        this.active = true;
-        if(this.map) {
-            OpenLayers.Element.addClass(
-                this.map.viewPortDiv,
-                this.displayClass.replace(/ /g, "") + "Active"
-            );
-        }
-        this.events.triggerEvent("activate");
-        return true;
-    },
-    
-    /**
-     * APIMethod: deactivate
-     * Deactivates a control and it's associated handler if any.  The exact
-     * effect of this depends on the control itself.
-     * 
-     * Returns:
-     * {Boolean} True if the control was effectively deactivated or false
-     *           if the control was already inactive.
-     */
-    deactivate: function () {
-        if (this.active) {
-            if (this.handler) {
-                this.handler.deactivate();
-            }
-            this.active = false;
-            if(this.map) {
-                OpenLayers.Element.removeClass(
-                    this.map.viewPortDiv,
-                    this.displayClass.replace(/ /g, "") + "Active"
-                );
-            }
-            this.events.triggerEvent("deactivate");
-            return true;
-        }
-        return false;
-    },
-
-    CLASS_NAME: "OpenLayers.Control"
-});
-
-/**
- * Constant: OpenLayers.Control.TYPE_BUTTON
- */
-OpenLayers.Control.TYPE_BUTTON = 1;
-
-/**
- * Constant: OpenLayers.Control.TYPE_TOGGLE
- */
-OpenLayers.Control.TYPE_TOGGLE = 2;
-
-/**
- * Constant: OpenLayers.Control.TYPE_TOOL
- */
-OpenLayers.Control.TYPE_TOOL   = 3;
-
 /** FILE: GeoExt/widgets/Action.js **/
 /**
  * Copyright (c) 2008-2012 The Open Source Geospatial Foundation
@@ -27770,6 +28021,8 @@ GeoExt.tree.LayerLoader = function(config) {
          */
         "load"
     );
+    
+    this.iconCls = {};
 
     GeoExt.tree.LayerLoader.superclass.constructor.call(this);
 };
@@ -27814,6 +28067,13 @@ Ext.extend(GeoExt.tree.LayerLoader, Ext.util.Observable, {
      *  uiProviders object will be taken from the ownerTree's loader.
      */
     uiProviders: null,
+
+    /** private: property[iconCls]
+     *  ``Object`` An object where the keys are the record ids and the
+     *  values are the iconCls values of the corresponding nodes. This is used
+     *  to restore the iconCls of a node after move whenever possible. It is 
+     *  needed since moving a layer node involves removing it and re-adding it.
+     */
     
     /** private: method[load]
      *  :param node: ``Ext.tree.TreeNode`` The node to add children to.
@@ -27892,7 +28152,8 @@ Ext.extend(GeoExt.tree.LayerLoader, Ext.util.Observable, {
             var child = this.createNode({
                 nodeType: 'gx_layer',
                 layer: layerRecord.getLayer(),
-                layerStore: this.store
+                layerStore: this.store,
+                iconCls: this.iconCls[layerRecord.id]
             });
             var sibling = node.item(index);
             if(sibling) {
@@ -27941,9 +28202,11 @@ Ext.extend(GeoExt.tree.LayerLoader, Ext.util.Observable, {
         // remove the record and re-insert it at the correct index
         var record = this.store.getByLayer(node.layer);
 
+        delete oldParent.loader.iconCls[record.id];
         if(newParent instanceof GeoExt.tree.LayerContainer && 
                                     this.store === newParent.loader.store) {
             newParent.loader._reordering = true;
+            newParent.loader.iconCls[record.id] = node.attributes.iconCls;
             this.store.remove(record);
             var newRecordIndex;
             if(newParent.childNodes.length > 1) {
@@ -28039,6 +28302,7 @@ Ext.extend(GeoExt.tree.LayerLoader, Ext.util.Observable, {
      */
     destroy: function() {
         this.removeStoreHandlers();
+        this.iconCls = null;
     }
 });
 
@@ -30112,7 +30376,7 @@ GeoExt.tree.TreeNodeUIEventMixin = function(){
 /** FILE: GeoExt/widgets/Popup.js **/
 /**
  * Copyright (c) 2008-2012 The Open Source Geospatial Foundation
- * 
+ *
  * Published under the BSD license.
  * See http://svn.geoext.org/core/trunk/geoext/license.txt for the full text
  * of the license.
@@ -30134,9 +30398,9 @@ Ext.namespace("GeoExt");
 
 /** api: example
  *  Sample code to create a popup anchored to a feature:
- * 
+ *
  *  .. code-block:: javascript
- *     
+ *
  *      var popup = new GeoExt.Popup({
  *          title: "My Popup",
  *          location: feature,
@@ -30148,7 +30412,7 @@ Ext.namespace("GeoExt");
 
 /** api: constructor
  *  .. class:: Popup(config)
- *   
+ *
  *      Popups are a specialized Window that supports anchoring
  *      to a particular location in a MapPanel.  When a popup
  *      is anchored to a location, that means that the popup
@@ -30185,10 +30449,10 @@ GeoExt.Popup = Ext.extend(Ext.Window, {
 
     /** api: config[location]
      *  ``OpenLayers.Feature.Vector`` or ``OpenLayers.LonLat`` or
-     *  ``OpenLayers.Pixel`` or ``OpenLayers.Geometry`` A location for this 
+     *  ``OpenLayers.Pixel`` or ``OpenLayers.Geometry`` A location for this
      *  popup's anchor.
      */
-    
+
     /** private: property[location]
      *  ``OpenLayers.LonLat``
      */
@@ -30202,7 +30466,7 @@ GeoExt.Popup = Ext.extend(Ext.Window, {
     /**
      * Some Ext.Window defaults need to be overriden here
      * because some Ext.Window behavior is not currently supported.
-     */    
+     */
 
     /** private: config[animCollapse]
      *  ``Boolean`` Animate the transition when the panel is collapsed.
@@ -30329,7 +30593,7 @@ GeoExt.Popup = Ext.extend(Ext.Window, {
             }
         }
     },
-    
+
     /** private: method[maximize]
      *  Override.
      */
@@ -30339,11 +30603,11 @@ GeoExt.Popup = Ext.extend(Ext.Window, {
         }
         GeoExt.Popup.superclass.maximize.apply(this, arguments);
     },
-    
+
     /** api: method[setSize]
      *  :param w: ``Integer``
      *  :param h: ``Integer``
-     *  
+     *
      *  Sets the size of the popup, taking into account the size of the anchor.
      */
     setSize: function(w, h) {
@@ -30402,10 +30666,15 @@ GeoExt.Popup = Ext.extend(Ext.Window, {
                 y += ancSize.height; // ok
             }
 
+            // Needed to have the right position on the first display
+            // (no flash on the center of the map).
+            me.setPagePosition(x, y);
             // position in the next cycle - otherwise strange shifts can occur.
             window.setTimeout(function() {
-                me.setPagePosition(x, y);
-            }, 0);            
+                if (me.el.dom) {
+                    me.setPagePosition(x, y);
+                }
+            }, 0);
         }
     },
 
@@ -30439,15 +30708,15 @@ GeoExt.Popup = Ext.extend(Ext.Window, {
      *  Pans the MapPanel's map so that an anchored popup can come entirely
      *  into view, with padding specified as per normal OpenLayers.Map popup
      *  padding.
-     */ 
+     */
     panIntoView: function() {
-        var mapBox = Ext.fly(this.map.div).getBox(true); 
+        var mapBox = Ext.fly(this.map.div).getBox(true);
 
         //assumed viewport takes up whole body element of map panel
         var popupPos =  this.getPosition(true);
         popupPos[0] -= mapBox.x;
         popupPos[1] -= mapBox.y;
-       
+
         var panelSize = [mapBox.width, mapBox.height]; // [X,Y]
 
         var popupSize = this.getSize();
@@ -30476,25 +30745,25 @@ GeoExt.Popup = Ext.extend(Ext.Window, {
 
         this.map.pan(dx, dy);
     },
-    
+
     /** private: method[onMapMove]
      */
     onMapMove: function() {
-        if (!(this.hidden && this.insideViewport)){       
+        if (!(this.hidden && this.insideViewport)){
             this._mapMove = true;
             this.position();
             delete this._mapMove;
         }
     },
-    
+
     /** private: method[addAnchorEvents]
      */
     addAnchorEvents: function() {
         this.map.events.on({
             "move" : this.onMapMove,
-            scope : this            
+            scope : this
         });
-        
+
         this.on({
             "resize": this.position,
             "collapse": this.position,
@@ -30502,7 +30771,7 @@ GeoExt.Popup = Ext.extend(Ext.Window, {
             scope: this
         });
     },
-    
+
     /** private: method[removeAnchorEvents]
      */
     removeAnchorEvents: function() {
@@ -30530,7 +30799,7 @@ GeoExt.Popup = Ext.extend(Ext.Window, {
 });
 
 /** api: xtype = gx_popup */
-Ext.reg('gx_popup', GeoExt.Popup); 
+Ext.reg('gx_popup', GeoExt.Popup);
 
 /** FILE: GeoExt/widgets/MapPanel.js **/
 /**
@@ -30662,7 +30931,7 @@ GeoExt.MapPanel = Ext.extend(Ext.Panel, {
     initComponent: function(){
         if(!(this.map instanceof OpenLayers.Map)) {
             this.map = new OpenLayers.Map(
-                Ext.applyIf(this.map || {}, {allOverlays: true})
+                Ext.applyIf(this.map || {}, {allOverlays: true, fallThrough: true})
             );
         }
         var layers = this.layers;
@@ -32506,6 +32775,16 @@ GeoExt.LegendImage = Ext.extend(Ext.BoxComponent, {
         };
     },
 
+    /** api: method[getImgEl]
+     *  :return:  ``Ext.Element`` The image element.
+     *
+     *  Returns the image element.
+     *  This method is supposed to be overriden in subclasses.
+     */
+    getImgEl: function() {
+        return this.getEl();
+    },
+
     /** api: method[setUrl]
      *  :param url: ``String`` The new URL.
      *  
@@ -32513,7 +32792,7 @@ GeoExt.LegendImage = Ext.extend(Ext.BoxComponent, {
      */
     setUrl: function(url) {
         this.url = url;
-        var el = this.getEl();
+        var el = this.getImgEl();
         if (el) {
             el.un("load", this.onImageLoad, this);
             el.on("load", this.onImageLoad, this, {single: true});
@@ -32538,7 +32817,7 @@ GeoExt.LegendImage = Ext.extend(Ext.BoxComponent, {
      *  Private method called during the destroy sequence.
      */
     onDestroy: function() {
-        var el = this.getEl();
+        var el = this.getImgEl();
         if(el) {
             el.un("load", this.onImageLoad, this);
             el.un("error", this.onImageLoadError, this);
@@ -32550,7 +32829,7 @@ GeoExt.LegendImage = Ext.extend(Ext.BoxComponent, {
      *  Private method called if the legend image fails loading.
      */
     onImageLoadError: function() {
-        var el = this.getEl();
+        var el = this.getImgEl();
         el.addClass(this.noImgCls);
         el.dom.src = this.defaultImgSrc;
     },
@@ -32559,7 +32838,7 @@ GeoExt.LegendImage = Ext.extend(Ext.BoxComponent, {
      *  Private method called after the legend image finished loading.
      */
     onImageLoad: function() {
-        var el = this.getEl();
+        var el = this.getImgEl();
         if (!OpenLayers.Util.isEquivalentUrl(el.dom.src, this.defaultImgSrc)) {
             el.removeClass(this.noImgCls);
         }
@@ -34956,6 +35235,9 @@ GeoExt.data.PrintProvider = Ext.extend(Ext.util.Observable, {
                     icons: icons
                 };
                 return enc;
+            },
+            "gx_wmtslegend": function(legend, scale) {
+                return this.encoders.legends.gx_urllegend.call(this, legend);
             },
             "gx_urllegend": function(legend) {
                 var enc = this.encoders.legends.base.call(this, legend);
@@ -38044,6 +38326,13 @@ GeoExt.WMSLegend = Ext.extend(GeoExt.LayerLegend, {
      */
     baseParams: null,
 
+    /** api: config[itemXType]
+     *  ``String``
+     *  The xtype to be used for each item of this legend. Defaults to
+     *  `gx_legendimage`.
+     */
+    itemXType: "gx_legendimage",
+    
     /** private: method[initComponent]
      *  Initializes the WMS legend. For group layers it will create multiple
      *  image box components.
@@ -38086,6 +38375,7 @@ GeoExt.WMSLegend = Ext.extend(GeoExt.LayerLegend, {
                              [layer.params.STYLES].join(",").split(",");
         var idx = layerNames.indexOf(layerName);
         var styleName = styleNames && styleNames[idx];
+
         // check if we have a legend URL in the record's
         // "styles" data field
         if(styles && styles.length > 0) {
@@ -38094,9 +38384,21 @@ GeoExt.WMSLegend = Ext.extend(GeoExt.LayerLegend, {
                     url = (s.name == styleName && s.legend) && s.legend.href;
                     return !url;
                 });
-            } else if(this.defaultStyleIsFirst === true && !styleNames &&
-                      !layer.params.SLD && !layer.params.SLD_BODY) {
-                url = styles[0].legend && styles[0].legend.href;
+            } else {
+                if(!styleNames && !layer.params.SLD && !layer.params.SLD_BODY) {
+                    // let's search for a style with a 'layerName' attribute
+                    Ext.each(styles, function(s) {
+                        url = (s.layerName == layerName && s.legend) &&
+                                                                s.legend.href;
+                        return !url;
+                    });
+                    if (!url && this.defaultStyleIsFirst === true) {
+                        url = styles[0].legend && styles[0].legend.href;
+                    }
+                }
+            }
+            if (url) {
+                url = decodeURIComponent(url);
             }
         }
         if(!url) {
@@ -38119,7 +38421,12 @@ GeoExt.WMSLegend = Ext.extend(GeoExt.LayerLegend, {
             // update legend after a forced layer redraw
             params._OLSALT = layer.params._OLSALT;
         }
-        url = Ext.urlAppend(url, Ext.urlEncode(params));
+        var appendParams = Ext.urlEncode(params);
+        var formatRegEx = /([&\?]?)format=[^&]*&?/i;
+        if (formatRegEx.test(appendParams) && formatRegEx.test(url)) {
+            url = url.replace(formatRegEx, '$1');
+        }
+        url = OpenLayers.Util.urlAppend(url, appendParams);
         if (url.toLowerCase().indexOf("request=getlegendgraphic") != -1) {
             if (url.toLowerCase().indexOf("format=") == -1) {
                 url = Ext.urlAppend(url, "FORMAT=image%2Fgif");
@@ -38181,7 +38488,7 @@ GeoExt.WMSLegend = Ext.extend(GeoExt.LayerLegend, {
             layerName = layerNames[i];
             if(!this.items || !this.getComponent(layerName)) {
                 this.add({
-                    xtype: "gx_legendimage",
+                    xtype: this.itemXType,
                     url: this.getLegendUrl(layerName, layerNames),
                     itemId: layerName
                 });
@@ -39984,7 +40291,13 @@ GeoExt.VectorLegend = Ext.extend(GeoExt.LayerLegend, {
                 this.symbolType = this.symbolTypeFromFeature(this.feature);
             } else if (this.layer) {
                 if (this.layer.features.length > 0) {
-                    var feature = this.layer.features[0].clone();
+                    var feature;
+                    for (var i=0, ii=this.layer.features.length; i<ii; i++) {
+                        if (this.layer.features[i].geometry !== null) {
+                            feature = this.layer.features[i].clone();
+                            break;
+                        }
+                    }
                     feature.attributes = {};
                     this.feature = feature;
                     this.symbolType = this.symbolTypeFromFeature(this.feature);
@@ -40100,19 +40413,24 @@ GeoExt.VectorLegend = Ext.extend(GeoExt.LayerLegend, {
      *  Set as a one time listener for the ``featuresadded`` event on the layer
      *  if it was provided with no features originally.
      */
-    onFeaturesAdded: function() {
-        this.layer.events.un({
-            featuresadded: this.onFeaturesAdded,
-            scope: this
-        });
-        var feature = this.layer.features[0].clone();
-        feature.attributes = {};
-        this.feature = feature;
-        this.symbolType = this.symbolTypeFromFeature(this.feature);
-        if (!this.rules) {
-            this.setRules();
+    onFeaturesAdded: function(evt) {
+        for (var i=0, ii=evt.features.length; i<ii; ++i) {
+            if (evt.features[i].geometry !== null) {
+                this.layer.events.un({
+                    featuresadded: this.onFeaturesAdded,
+                    scope: this
+                });
+                var feature = evt.features[i].clone();
+                feature.attributes = {};
+                this.feature = feature;
+                this.symbolType = this.symbolTypeFromFeature(this.feature);
+                if (!this.rules) {
+                    this.setRules();
+                }
+                this.update();
+                break;
+            }
         }
-        this.update();
     },
     
     /** private: method[setRules]
@@ -40271,12 +40589,12 @@ GeoExt.VectorLegend = Ext.extend(GeoExt.LayerLegend, {
      */
     createRuleRenderer: function(rule) {
         var types = [this.symbolType, "Point", "Line", "Polygon"];
-        var type, haveType;
+        var type, haveType, i, len, ii;
         var symbolizers = rule.symbolizers;
         if (!symbolizers) {
             // TODO: remove this when OpenLayers.Symbolizer is used everywhere
             var symbolizer = rule.symbolizer;
-            for (var i=0, len=types.length; i<len; ++i) {
+            for (i=0, len=types.length; i<len; ++i) {
                 type = types[i];
                 if (symbolizer[type]) {
                     symbolizer = symbolizer[type];
@@ -40287,7 +40605,7 @@ GeoExt.VectorLegend = Ext.extend(GeoExt.LayerLegend, {
             symbolizers = [symbolizer];
         } else {
             var Type;
-            outer: for (var i=0, ii=types.length; i<ii; ++i) {
+            outer: for (i=0, ii=types.length; i<ii; ++i) {
                 type = types[i];
                 Type = OpenLayers.Symbolizer[type];
                 if (Type) {
@@ -40406,15 +40724,16 @@ GeoExt.VectorLegend = Ext.extend(GeoExt.LayerLegend, {
      */
     update: function() {
         GeoExt.VectorLegend.superclass.update.apply(this, arguments);
+        var i, ii;
         if (this.symbolType && this.rules) {
             if (this.rulesContainer.items) {
                 var comp;
-                for (var i=this.rulesContainer.items.length-1; i>=0; --i) {
+                for (i=this.rulesContainer.items.length-1; i>=0; --i) {
                     comp = this.rulesContainer.getComponent(i);
                     this.rulesContainer.remove(comp, true);
                 }
             }
-            for (var i=0, ii=this.rules.length; i<ii; ++i) {
+            for (i=0, ii=this.rules.length; i<ii; ++i) {
                 this.addRuleEntry(this.rules[i], true);
             }
             this.doLayout();
@@ -40503,7 +40822,7 @@ GeoExt.VectorLegend = Ext.extend(GeoExt.LayerLegend, {
                     "zoomend": this.onMapZoom,
                     scope: this
                 });
-    }
+            }
         }
     },
 
@@ -41766,8 +42085,8 @@ gxp.LayerUploadPanel = Ext.extend(Ext.FormPanel, {
     workspaceLabel: "Workspace",
     workspaceEmptyText: "Default workspace",
     dataStoreLabel: "Store",
-    dataStoreEmptyText: "Create new store",
-    defaultDataStoreEmptyText: "Default data store",
+    dataStoreEmptyText: "Choose a store",
+    dataStoreNewText: "Create new store",
     crsLabel: "CRS",
     crsEmptyText: "Coordinate Reference System ID",
     invalidCrsText: "CRS identifier should be an EPSG code (e.g. EPSG:4326)",
@@ -41789,7 +42108,7 @@ gxp.LayerUploadPanel = Ext.extend(Ext.FormPanel, {
      *  ``String``
      *  URL for GeoServer RESTConfig root.  E.g. "http://example.com/geoserver/rest".
      */
-    
+
     /** private: property[defaultDataStore]
      *  ``string``
      */
@@ -41889,10 +42208,10 @@ gxp.LayerUploadPanel = Ext.extend(Ext.FormPanel, {
                     if (fields.workspace) {
                         jsonData["import"].targetWorkspace = {workspace: {name: fields.workspace}};
                     }
-                    if (fields.store) {
-                        jsonData["import"].targetStore = {dataStore: {name: fields.store}}
-                    } else if (this.defaultDataStore) {
-                        jsonData["import"].targetStore = {dataStore: {name: this.defaultDataStore}}                        
+                    if (Ext.isEmpty(fields.store) && this.defaultDataStore) {
+                        jsonData["import"].targetStore = {dataStore: {name: this.defaultDataStore}};
+                    } else if (!Ext.isEmpty(fields.store) && fields.store !== this.dataStoreNewText) {
+                        jsonData["import"].targetStore = {dataStore: {name: fields.store}};
                     }
                     Ext.Ajax.request({
                         url: this.getUploadUrl(),
@@ -41902,7 +42221,7 @@ gxp.LayerUploadPanel = Ext.extend(Ext.FormPanel, {
                             this._import = response.getResponseHeader("Location");
                             this.optionsFieldset.expand();
                             form.submit({
-                                url: this._import + "/tasks",
+                                url: this._import + "/tasks?expand=all",
                                 waitMsg: this.waitMsgText,
                                 waitMsgTarget: true,
                                 reset: true,
@@ -41982,7 +42301,6 @@ gxp.LayerUploadPanel = Ext.extend(Ext.FormPanel, {
             name: "workspace",
             ref: "../workspace",
             fieldLabel: this.workspaceLabel,
-            emptyText: this.workspaceEmptyText,
             store: new Ext.data.JsonStore({
                 url: this.getWorkspacesUrl(),
                 autoLoad: true,
@@ -42023,16 +42341,28 @@ gxp.LayerUploadPanel = Ext.extend(Ext.FormPanel, {
                 store.proxy = new Ext.data.HttpProxy({
                     url: workspaceUrl.split(".json").shift() + "/datastores.json"
                 });
+                store.proxy.on('loadexception', addDefault, this);
                 store.load();
             },
             scope: this
         });
 
+        var addDefault = function() {
+            var defaultData = {
+                name: this.dataStoreNewText
+            };
+            var r = new store.recordType(defaultData);
+            store.insert(0, r);
+            store.proxy && store.proxy.un('loadexception', addDefault, this);
+        };
+
+        store.on('load', addDefault, this);
+
         var combo = new Ext.form.ComboBox({
             name: "store",
             ref: "../dataStore",
-            fieldLabel: this.dataStoreLabel,
             emptyText: this.dataStoreEmptyText,
+            fieldLabel: this.dataStoreLabel,
             store: store,
             displayField: "name",
             valueField: "name",
@@ -42056,18 +42386,24 @@ gxp.LayerUploadPanel = Ext.extend(Ext.FormPanel, {
             url: this.url + '/workspaces/' + workspace + '/datastores/default.json',
             callback: function(options, success, response) {
                 this.defaultDataStore = null;
-                this.dataStore.emptyText = this.dataStoreEmptyText;
-                this.dataStore.setValue('');
                 if (response.status === 200) {
                     var json = Ext.decode(response.responseText);
+                    if (workspace === 'default' && json.dataStore && json.dataStore.workspace) {
+                        this.workspace.setValue(json.dataStore.workspace.name);
+                        var store = this.workspace.store;
+                        var data = {
+                            name: json.dataStore.workspace.name,
+                            href: json.dataStore.workspace.href
+                        };
+                        var r = new store.recordType(data);
+                        this.fireEvent("workspaceselected", this, r);
+                    }
                     //TODO Revisit this logic - currently we assume that stores
                     // with the substring "file" in the type are file based,
                     // and for file-based data stores we want to crate a new
                     // store.
                     if (json.dataStore && json.dataStore.enabled === true && !/file/i.test(json.dataStore.type)) {
                         this.defaultDataStore = json.dataStore.name;
-                        this.dataStore.emptyText = this.defaultDataStoreEmptyText;
-                        this.workspace.setValue(json.dataStore.workspace.name);
                         this.dataStore.setValue(this.defaultDataStore);
                     }
                 }
@@ -42112,15 +42448,12 @@ gxp.LayerUploadPanel = Ext.extend(Ext.FormPanel, {
                         if (!task) {
                             success = false;
                             msg = "Unknown upload error";
-                        } else if (!task.items.length) {
+                        } else if (task.state === 'NO_FORMAT') {
                             success = false;
-                            msg = "Upload contains no items that can be imported.";
-                        } else if (task.state !== "READY") {
-                            if (!(task.state === "INCOMPLETE" && task.items[0].state === "NO_CRS" && formData.nativeCRS)) {
-                                success = false;
-                                msg = "Source " + task.source.file + " is " + task.state + ": " + task.items[0].state;
-                                break;
-                            }
+                            msg = "Upload contains no suitable files.";
+                        } else if (task.state === 'NO_CRS' && !formData.nativeCRS) {
+                            success = false;
+                            msg = "Coordinate Reference System (CRS) of source file " + task.data.file + " could not be determined. Please specify manually.";
                         }
                     }
                 }
@@ -42130,27 +42463,26 @@ gxp.LayerUploadPanel = Ext.extend(Ext.FormPanel, {
             // mark the file field as invlid
             records = [{data: {id: "file", msg: msg || this.uploadFailedText}}];
         } else {
-            var itemModified = !!(formData.title || formData["abstract"] || formData.nativeCRS),
-                queue = [];
-            if (itemModified) {
+            var itemModified = !!(formData.title || formData["abstract"] || formData.nativeCRS);
+            // do not do this for coverages see https://github.com/boundlessgeo/suite/issues/184
+            if (itemModified && tasks[0].target.dataStore) {
                 this.waitMsg = new Ext.LoadMask((this.ownerCt || this).getEl(), {msg: this.processingUploadText});
                 this.waitMsg.show();
-                // for now we only support a single item (items[0])
-                var resource = task.items[0].resource,
-                    layer = resource.featureType ? "featureType" : "coverage",
-                    item = {id: task.items[0].id, resource: {}};
-                item.resource[layer] = {
+                // for now we only support a single task
+                var payload = {
                     title: formData.title || undefined,
                     "abstract": formData["abstract"] || undefined,
                     srs: formData.nativeCRS || undefined
                 };
                 Ext.Ajax.request({
                     method: "PUT",
-                    url: tasks[0].items[0].href,
-                    jsonData: item,
+                    url: tasks[0].layer.href,
+                    jsonData: payload,
                     success: this.finishUpload,
                     failure: function(response) {
-                        this.waitMsg.hide();
+                        if (this.waitMsg) {
+                            this.waitMsg.hide();
+                        }
                         var errors = [];
                         try {
                             var json = Ext.decode(response.responseText);
@@ -42220,10 +42552,12 @@ gxp.LayerUploadPanel = Ext.extend(Ext.FormPanel, {
     handleUploadSuccess: function(response) {
         Ext.Ajax.request({
             method: "GET",
-            url: this._import,
+            url: this._import + '?expand=all',
             failure: this.handleFailure,
             success: function(response) {
-                this.waitMsg.hide();
+                if (this.waitMsg) {
+                    this.waitMsg.hide();
+                }
                 this.getForm().reset();
                 var details = Ext.decode(response.responseText);
                 this.fireEvent("uploadcomplete", this, details);
@@ -42235,9 +42569,16 @@ gxp.LayerUploadPanel = Ext.extend(Ext.FormPanel, {
     
     /** private: method[handleFailure]
      */
-    handleFailure: function() {
-        this.waitMsg.hide();
-        this.getForm().markInvalid([{file: this.uploadFailedText}]);
+    handleFailure: function(response) {
+        // see http://stackoverflow.com/questions/10046972/msie-returns-status-code-of-1223-for-ajax-request
+        if (response && response.status === 1223) {
+            this.handleUploadSuccess(response);
+        } else {
+            if (this.waitMsg) {
+                this.waitMsg.hide();
+            }
+            this.getForm().markInvalid([{file: this.uploadFailedText}]);
+        }
     }
 
 });
@@ -43427,7 +43768,7 @@ gxp.FilterBuilder = Ext.extend(Ext.Container, {
         }
         return filter;
     },
-    
+
     createDefaultFilter: function() {
         return new OpenLayers.Filter.Comparison({
                             matchCase: !this.caseInsensitiveMatch});
@@ -43810,6 +44151,7 @@ gxp.WMSLayerPanel = Ext.extend(Ext.TabPanel, {
     /** i18n */
     aboutText: "About",
     titleText: "Title",
+    attributionText: "Attribution",
     nameText: "Name",
     descriptionText: "Description",
     displayText: "Display",
@@ -44002,6 +44344,22 @@ gxp.WMSLayerPanel = Ext.extend(Ext.TabPanel, {
                     anchor: "99%",
                     value: this.layerRecord.get("name"),
                     readOnly: true
+                }, {
+                    xtype: "textfield",
+                    fieldLabel: this.attributionText,
+                    anchor: "99%",
+                    listeners: {
+                        change: function(field) {
+                            var layer = this.layerRecord.getLayer();
+                            layer.attribution = field.getValue();
+                            layer.map.events.triggerEvent("changelayer", {
+                                layer: layer, property: "attribution"
+                            });
+                            this.fireEvent("change");
+                        },
+                        scope: this
+                    },
+                    value: this.layerRecord.getLayer().attribution
                 }]
             }, {
                 layout: "form",
@@ -50127,6 +50485,11 @@ gxp.Viewer = Ext.extend(Ext.util.Observable, {
              *  Fires when application is ready for user interaction.
              */
             "ready",
+
+            /** api: event[beforecreateportal]
+             *  Fires before the portal is created by the Ext ComponentManager.
+             */
+            "beforecreateportal",
             
             /** api: event[portalready]
              *  Fires after the portal is initialized.
@@ -50447,6 +50810,8 @@ gxp.Viewer = Ext.extend(Ext.util.Observable, {
             this.mapPanel.region = "center";
             this.portalItems.push(this.mapPanel);
         }
+
+        this.fireEvent("beforecreateportal");
         
         this.portal = Ext.ComponentMgr.create(Ext.applyIf(config, {
             layout: "fit",
@@ -50789,7 +51154,7 @@ gxp.Viewer = Ext.extend(Ext.util.Observable, {
                 callback: function(request) {
                     this.handleSave(request);
                     if (callback) {
-                        callback.call(scope || this);
+                        callback.call(scope || this, request);
                     }
                 },
                 scope: this
@@ -56555,7 +56920,7 @@ gxp.WMSStylesDialog = Ext.extend(Ext.Container, {
         }
         catch(e) {
             if (window.console) {
-                console.warn(e.msg);
+                console.warn(e.message);
             }
             this.setupNonEditable();
         }
@@ -57665,6 +58030,13 @@ gxp.TextSymbolizer = Ext.extend(Ext.Panel, {
     maxDisplacementText: "Maximum displacement",
     repeatText: "Repeat",
     forceLeftToRightText: "Force left to right",
+    groupText: "Grouping",
+    spaceAroundText: "Space around",
+    labelAllGroupText: "Label all segments in line group",
+    maxAngleDeltaText: "Maximum angle delta",
+    conflictResolutionText: "Conflict resolution",
+    goodnessOfFitText: "Goodness of fit",
+    polygonAlignText: "Polygon alignment",
     graphicResizeText: "Graphic resize",
     graphicMarginText: "Graphic margin",
     graphicTitle: "Graphic",
@@ -57680,7 +58052,14 @@ gxp.TextSymbolizer = Ext.extend(Ext.Panel, {
     maxDisplacementHelp: "Maximum displacement in pixels if label position is busy",
     repeatHelp: "Repeat labels after a certain number of pixels",
     forceLeftToRightHelp: "Labels are usually flipped to make them readable. If the character happens to be a directional arrow then this is not desirable",
+    groupHelp: "Grouping works by collecting all features with the same label text, then choosing a representative geometry for the group. Road data is a classic example to show why grouping is useful. It is usually desirable to display only a single label for all of 'Main Street', not a label for every block of 'Main Street.'",
+    spaceAroundHelp: "Overlapping and Separating Labels. By default GeoServer will not render labels 'on top of each other'. By using the spaceAround option you can either allow labels to overlap, or add extra space around labels. The value supplied for the option is a positive or negative size in pixels. Using the default value of 0, the bounding box of a label cannot overlap the bounding box of another label.",
+    labelAllGroupHelp: "The labelAllGroup option makes sure that all of the segments in a line group are labeled instead of just the longest one.",
+    conflictResolutionHelp: "By default labels are subjected to conflict resolution, meaning the renderer will not allow any label to overlap with a label that has been drawn already. Setting this parameter to false pull the label out of the conflict resolution game, meaning the label will be drawn even if it overlaps with other labels, and other labels drawn after it won’t mind overlapping with it.",
+    goodnessOfFitHelp: "Geoserver will remove labels if they are a particularly bad fit for the geometry they are labeling. For Polygons: the label is sampled approximately at every letter. The distance from these points to the polygon is determined and each sample votes based on how close it is to the polygon. The default value is 0.5.",
     graphic_resizeHelp: "Specifies a mode for resizing label graphics (such as highway shields) to fit the text of the label. The default mode, ‘none’, never modifies the label graphic. In stretch mode, GeoServer will resize the graphic to exactly surround the label text, possibly modifying the image’s aspect ratio. In proportional mode, GeoServer will expand the image to be large enough to surround the text while preserving its original aspect ratio.",
+    maxAngleDeltaHelp: "Designed to use used in conjuection with followLine, the maxAngleDelta option sets the maximum angle, in degrees, between two subsequent characters in a curved label. Large angles create either visually disconnected words or overlapping characters. It is advised not to use angles larger than 30.",
+    polygonAlignHelp: "GeoServer normally tries to place horizontal labels within a polygon, and give up in case the label position is busy or if the label does not fit enough in the polygon. This options allows GeoServer to try alternate rotations for the labels. Possible options: the default value, only the rotation manually specified in the <Rotation> tag will be used (manual), If the label does not fit horizontally and the polygon is taller than wider the vertical alignement will also be tried (ortho), If the label does not fit horizontally the minimum bounding rectangle will be computed and a label aligned to it will be tried out as well (mbr).",
     graphic_marginHelp: "Similar to the margin shorthand property in CSS for HTML, its interpretation varies depending on how many margin values are provided: 1 = use that margin length on all sides of the label 2 = use the first for top & bottom margins and the second for left & right margins. 3 = use the first for the top margin, second for left & right margins, third for the bottom margin. 4 = use the first for the top margin, second for the right margin, third for the bottom margin, and fourth for the left margin.",
 
     initComponent: function() {
@@ -57696,6 +58075,7 @@ gxp.TextSymbolizer = Ext.extend(Ext.Panel, {
 
         this.haloCache = {};
 
+        this.attributes.on('load', this.showHideGeometryOptions, this);
         this.attributes.load();
 
         var defAttributesComboConfig = {
@@ -57808,7 +58188,7 @@ gxp.TextSymbolizer = Ext.extend(Ext.Panel, {
             title: this.graphicTitle,
             checkboxToggle: true,
             hideMode: 'offsets',
-            collapsed: !(this.symbolizer.fillColor || this.symbolizer.fillOpacity),
+            collapsed: !(this.symbolizer.fillColor || this.symbolizer.fillOpacity || this.symbolizer.vendorOptions["graphic-resize"] || this.symbolizer.vendorOptions["graphic-margin"]),
             labelWidth: 70,
             items: [{
                 xtype: "gxp_pointsymbolizer",
@@ -57966,16 +58346,17 @@ gxp.TextSymbolizer = Ext.extend(Ext.Panel, {
             }
         }, {
             xtype: "fieldset",
+            collapsed: !(this.symbolizer.labelAlign || this.symbolizer.vendorOptions['polygonAlign'] || this.symbolizer.labelXOffset || this.symbolizer.labelYOffset || this.symbolizer.labelPerpendicularOffset),
             title: this.positioningText,
             checkboxToggle: true,
-            collapsed: true,
             autoHeight: true,
             labelWidth: 75,
             defaults: {
                 width: 100
             },
-            items: [Ext.applyIf({
+            items: [this.createField(Ext.applyIf({
                 fieldLabel: this.anchorPointText,
+                geometryTypes: ["POINT"],
                 value: this.symbolizer.labelAlign || "lb",
                 store: [
                     ['lt', 'Left-top'], 
@@ -57997,8 +58378,9 @@ gxp.TextSymbolizer = Ext.extend(Ext.Panel, {
                     },
                     scope: this
                 }
-            }, this.attributesComboConfig), {
+            }, this.attributesComboConfig)), this.createField({
                 xtype: "numberfield",
+                geometryTypes: ["POINT"],
                 fieldLabel: this.displacementXText,
                 value: this.symbolizer.labelXOffset,
                 listeners: {
@@ -58008,8 +58390,9 @@ gxp.TextSymbolizer = Ext.extend(Ext.Panel, {
                     },
                     scope: this
                 }
-            }, {
+            }), this.createField({
                 xtype: "numberfield",
+                geometryTypes: ["POINT"],
                 fieldLabel: this.displacementYText,
                 value: this.symbolizer.labelYOffset,
                 listeners: {
@@ -58019,8 +58402,9 @@ gxp.TextSymbolizer = Ext.extend(Ext.Panel, {
                     },
                     scope: this
                 }
-            }, {
+            }), this.createField({
                 xtype: "numberfield",
+                geometryTypes: ["LINE"],
                 fieldLabel: this.perpendicularOffsetText,
                 value: this.symbolizer.labelPerpendicularOffset,
                 listeners: {
@@ -58034,12 +58418,22 @@ gxp.TextSymbolizer = Ext.extend(Ext.Panel, {
                     },
                     scope: this
                 }
-            }]
+            }),
+            this.createVendorSpecificField({
+                name: 'polygonAlign',
+                geometryTypes: ['POLYGON'],
+                xtype: "combo",
+                mode: 'local',
+                value: this.symbolizer.vendorOptions['polygonAlign'] || 'manual',
+                triggerAction: 'all',
+                store: ["manual", "ortho", "mbr"],
+                fieldLabel: this.polygonAlignText
+            })]
         }, {
             xtype: "fieldset",
             title: this.priorityText,
             checkboxToggle: true,
-            collapsed: true,
+            collapsed: !(this.symbolizer.priority),
             autoHeight: true,
             labelWidth: 50,
             items: [Ext.applyIf({
@@ -58064,7 +58458,7 @@ gxp.TextSymbolizer = Ext.extend(Ext.Panel, {
             xtype: "fieldset",
             title: this.labelOptionsText,
             checkboxToggle: true,
-            collapsed: true,
+            collapsed: !(this.symbolizer.vendorOptions['autoWrap'] || this.symbolizer.vendorOptions['followLine'] || this.symbolizer.vendorOptions['maxAngleDelta'] || this.symbolizer.vendorOptions['maxDisplacement'] || this.symbolizer.vendorOptions['repeat'] || this.symbolizer.vendorOptions['forceLeftToRight'] || this.symbolizer.vendorOptions['group'] || this.symbolizer.vendorOptions['spaceAround'] || this.symbolizer.vendorOptions['labelAllGroup'] || this.symbolizer.vendorOptions['conflictResolution'] || this.symbolizer.vendorOptions['goodnessOfFit'] || this.symbolizer.vendorOptions['polygonAlign']),
             autoHeight: true,
             labelWidth: 80,
             defaults: {
@@ -58078,8 +58472,26 @@ gxp.TextSymbolizer = Ext.extend(Ext.Panel, {
                 }),
                 this.createVendorSpecificField({
                     name: 'followLine', 
+                    geometryTypes: ["LINE"],
                     xtype: 'checkbox', 
+                    listeners: {
+                        'check': function(cb, checked) {
+                            if (!checked) {
+                                this.maxAngleDelta.hide();
+                            } else {
+                                this.maxAngleDelta.show();
+                            }
+                        },
+                        scope: this
+                    },
                     fieldLabel: this.followLineText
+                }),
+                this.createVendorSpecificField({
+                    name: 'maxAngleDelta',
+                    ref: "../maxAngleDelta",
+                    hidden: (this.symbolizer.vendorOptions["followLine"] == null),
+                    geometryTypes: ["LINE"],
+                    fieldLabel: this.maxAngleDeltaText
                 }),
                 this.createVendorSpecificField({
                     name: 'maxDisplacement',
@@ -58087,12 +58499,67 @@ gxp.TextSymbolizer = Ext.extend(Ext.Panel, {
                 }),
                 this.createVendorSpecificField({
                     name: 'repeat',
+                    geometryTypes: ["LINE"],
                     fieldLabel: this.repeatText
                 }),
                 this.createVendorSpecificField({
                     name: 'forceLeftToRight',
                     xtype: "checkbox",
+                    geometryTypes: ["LINE"],
                     fieldLabel: this.forceLeftToRightText
+                }),
+                this.createVendorSpecificField({
+                    name: 'group',
+                    listeners: {
+                        'check': function(cb, value) {
+                            if (this.geometryType === 'LINE') {
+                                if (value === false) {
+                                    this.labelAllGroup.hide();
+                                } else {
+                                    this.labelAllGroup.show();
+                                }
+                            }
+                        },
+                        scope: this
+                    },
+                    xtype: 'checkbox',
+                    yesno: true,
+                    fieldLabel: this.groupText
+                }),
+                this.createVendorSpecificField({
+                    name: 'labelAllGroup',
+                    ref: "../labelAllGroup",
+                    geometryTypes: ["LINE"],
+                    hidden: (this.symbolizer.vendorOptions['group'] !== 'yes'),
+                    xtype: "checkbox",
+                    fieldLabel: this.labelAllGroupText
+                }),
+                this.createVendorSpecificField({
+                    name: 'conflictResolution',
+                    xtype: "checkbox",
+                    listeners: {
+                        'check': function(cb, checked) {
+                            if (!checked) {
+                                this.spaceAround.hide();
+                            } else {
+                                this.spaceAround.show();
+                            }
+                        },
+                        scope: this
+                    },
+                    fieldLabel: this.conflictResolutionText
+                }),
+                this.createVendorSpecificField({
+                    name: 'spaceAround',
+                    hidden: (this.symbolizer.vendorOptions['conflictResolution'] !== true),
+                    allowNegative: true,
+                    ref: "../spaceAround",
+                    fieldLabel: this.spaceAroundText
+                }),
+                this.createVendorSpecificField({
+                    name: 'goodnessOfFit',
+                    geometryTypes: ['POLYGON'],
+                    fieldLabel: this.goodnessOfFitText
                 })
             ]
         }];
@@ -58113,6 +58580,18 @@ gxp.TextSymbolizer = Ext.extend(Ext.Panel, {
         
     },
 
+    createField: function(config) {
+        var field = Ext.ComponentMgr.create(config);
+        if (config.geometryTypes) {
+            this.on('geometrytype', function(type) {
+                if (config.geometryTypes.indexOf(type) === -1) {
+                    field.hide();
+                }
+            });
+        }
+        return field;
+    },
+
     /**
      * private: method[createVendorSpecificField]
      *  :arg config: ``Object`` config object for the field to create
@@ -58125,14 +58604,19 @@ gxp.TextSymbolizer = Ext.extend(Ext.Panel, {
             if (Ext.isEmpty(value)) {
                 delete this.symbolizer.vendorOptions[config.name];
             } else {
-                this.symbolizer.vendorOptions[config.name] = value;
+               if (config.yesno === true) {
+                   this.symbolizer.vendorOptions[config.name] = (value == true) ? 'yes': 'no';
+               } else {
+                   this.symbolizer.vendorOptions[config.name] = value;
+               }
             }
             this.fireEvent("change", this.symbolizer);
         };
         var field = Ext.ComponentMgr.create(Ext.applyIf(config, {
             xtype: "numberfield",
             allowNegative: false,
-            value: this.symbolizer.vendorOptions[config.name],
+            value: config.value || this.symbolizer.vendorOptions[config.name],
+            checked: (config.yesno === true) ? (this.symbolizer.vendorOptions[config.name] === 'yes') : this.symbolizer.vendorOptions[config.name],
             plugins: [{
                 ptype: 'gxp_formfieldhelp',
                 dismissDelay: 20000,
@@ -58141,7 +58625,39 @@ gxp.TextSymbolizer = Ext.extend(Ext.Panel, {
         }));
         field.on("change", listener, this);
         field.on("check", listener, this);
+        if (config.geometryTypes) {
+            this.on('geometrytype', function(type) {
+                if (config.geometryTypes.indexOf(type) === -1) {
+                    field.hide();
+                }
+            });
+        }
         return field;
+    },
+
+    showHideGeometryOptions: function() {
+        var geomRegex = /gml:((Multi)?(Point|Line|Polygon|Curve|Surface|Geometry)).*/;
+        var polygonRegex = /gml:((Multi)?(Polygon|Surface)).*/;
+        var pointRegex = /gml:((Multi)?(Point)).*/;
+        var lineRegex = /gml:((Multi)?(Line|Curve|Surface)).*/;
+        var geomType = null;
+        this.attributes.each(function(r) {
+            var type = r.get("type");
+            var match = geomRegex.exec(type);
+            if (match) {
+                if (polygonRegex.exec(type)) {
+                    geomType = "POLYGON";
+                } else if (pointRegex.exec(type)) {
+                    geomType = "POINT";
+                } else if (lineRegex.exec(type)) {
+                    geomType = "LINE";
+                }
+            }
+        }, this);
+        if (geomType !== null) {
+            this.geometryType = geomType;
+            this.fireEvent('geometrytype', geomType);
+        }
     }
 
 });
@@ -68749,11 +69265,13 @@ gxp.plugins.FeatureGrid = Ext.extend(gxp.plugins.ClickableFeatures, {
             featureGrid.setStore(featureManager.featureStore, schema);
             if (!featureManager.featureStore) {
                 // not a feature layer, reset toolbar
-                featureGrid.lastPageButton.disable();
-                featureGrid.nextPageButton.disable();
-                featureGrid.firstPageButton.disable();
-                featureGrid.prevPageButton.disable();
-                featureGrid.zoomToPageButton.disable();
+                if (featureManager.paging) {
+                    featureGrid.lastPageButton.disable();
+                    featureGrid.nextPageButton.disable();
+                    featureGrid.firstPageButton.disable();
+                    featureGrid.prevPageButton.disable();
+                    featureGrid.zoomToPageButton.disable();
+                }
                 this.displayTotalResults();
             }
         }
@@ -73470,329 +73988,6 @@ gxp.plugins.MapQuestSource = Ext.extend(gxp.plugins.LayerSource, {
 
 Ext.preg(gxp.plugins.MapQuestSource.prototype.ptype, gxp.plugins.MapQuestSource);
 
-/** FILE: plugins/QueryForm.js **/
-/**
- * Copyright (c) 2008-2011 The Open Planning Project
- * 
- * Published under the GPL license.
- * See https://github.com/opengeo/gxp/raw/master/license.txt for the full text
- * of the license.
- */
-
-/**
- * @requires plugins/Tool.js
- * @include widgets/FilterBuilder.js
- */
-
-/** api: (define)
- *  module = gxp.plugins
- *  class = QueryForm
- */
-
-/** api: (extends)
- *  plugins/Tool.js
- */
-Ext.namespace("gxp.plugins");
-
-/** api: constructor
- *  .. class:: QueryForm(config)
- *
- *    Plugin for performing queries on feature layers
- *    TODO Replace this tool with something that is less like GeoEditor and
- *    more like filtering.
- */
-gxp.plugins.QueryForm = Ext.extend(gxp.plugins.Tool, {
-    
-    /** api: ptype = gxp_queryform */
-    ptype: "gxp_queryform",
-
-    /** api: config[featureManager]
-     *  ``String`` The id of the :class:`gxp.plugins.FeatureManager` to use
-     *  with this tool.
-     */
-    featureManager: null,
-    
-    /** api: config[autoHide]
-     *  ``Boolean`` Set to true if the output of this tool goes into an
-     *  ``Ext.Window`` that should be hidden when the query result is
-     *  available. Default is false.
-     */
-    autoHide: false,
-
-    /** private: property[schema]
-     *  ``GeoExt.data.AttributeStore``
-     */
-    schema: null,
-    
-    /** api: config[queryActionText]
-     *  ``String``
-     *  Text for query action (i18n).
-     */
-    queryActionText: "Query",
-    
-    /** api: config[cancelButtonText]
-     *  ``String``
-     *  Text for cancel button (i18n).
-     */
-    cancelButtonText: "Cancel",
-
-    /** api: config[queryMenuText]
-     *  ``String``
-     *  Text for query menu item (i18n).
-     */
-    queryMenuText: "Query layer",
-
-    /** api: config[queryActionTip]
-     *  ``String``
-     *  Text for query action tooltip (i18n).
-     */
-    queryActionTip: "Query the selected layer",
-
-    /** api: config[queryByLocationText]
-     *  ``String``
-     *  Text for query by location (i18n).
-     */
-    queryByLocationText: "Query by current map extent",
-
-    /** api: config[queryByAttributesText]
-     *  ``String``
-     *  Text for query by attributes (i18n).
-     */
-    queryByAttributesText: "Query by attributes",
-    
-    /** api: config[queryMsg]
-     *  ``String``
-     *  Text for query load mask (i18n).
-     */
-    queryMsg: "Querying...",
-    
-    /** api: config[noFeaturesTitle]
-     *  ``String``
-     *  Text for no features alert title (i18n)
-     */
-    noFeaturesTitle: "No Match",
-
-    /** api: config[noFeaturesMsg]
-     *  ``String``
-     *  Text for no features alert message (i18n)
-     */
-    noFeaturesMessage: "Your query did not return any results.",
-
-    /** api: config[actions]
-     *  ``Object`` By default, this tool creates a "Query" action to trigger
-     *  the output of this tool's form. Set to null if you want to include
-     *  the form permanently in your layout.
-     */
-    
-    /** api: config[outputAction]
-     *  ``Number`` By default, the "Query" action will trigger this tool's
-     *  form output. There is no need to change this unless you configure
-     *  custom ``actions``.
-     */
-    outputAction: 0,
-    
-    /** api: config[autoExpand]
-     *  ``String`` If set to the id of a container, the container will be
-     *  expanded when the Query Form is enabled, and collapsed when it is
-     *  disabled. Once the user manually expands/collapses the contaienr, the
-     *  user setting will stick for the current session.
-     */
-    autoExpand: null,
-    
-    /** api: method[addActions]
-     */
-    addActions: function(actions) {
-        if (!this.initialConfig.actions && !actions) {
-            actions = [{
-                text: this.queryActionText,
-                menuText: this.queryMenuText,
-                iconCls: "gxp-icon-find",
-                tooltip: this.queryActionTip,
-                disabled: true,
-                toggleGroup: this.toggleGroup,
-                enableToggle: true,
-                allowDepress: true,
-                toggleHandler: function(button, pressed) {
-                    if (this.autoExpand && this.output.length > 0) {
-                        var expandContainer = Ext.getCmp(this.autoExpand);
-                        expandContainer[pressed ? 'expand' : 'collapse']();
-                        if (pressed) {
-                            expandContainer.expand();
-                            if (expandContainer.ownerCt && expandContainer.ownerCt instanceof Ext.Panel) {
-                                expandContainer.ownerCt.expand();
-                            }
-                        } else {
-                            this.target.tools[this.featureManager].loadFeatures();
-                        }
-                    }
-                },
-                scope: this
-            }];
-        }
-        this.actions = gxp.plugins.QueryForm.superclass.addActions.apply(this, actions);
-        // support custom actions
-        if (this.actionTarget !== null && this.actions) {
-            this.target.tools[this.featureManager].on("layerchange", function(mgr, rec, schema) {
-                for (var i=this.actions.length-1; i>=0; --i) {
-                    this.actions[i].setDisabled(!schema);
-                }
-            }, this);
-        }
-    },
-
-    /** api: method[addOutput]
-     */
-    addOutput: function(config) {
-        var featureManager = this.target.tools[this.featureManager];
-
-        config = Ext.apply({
-            border: false,
-            bodyStyle: "padding: 10px",
-            layout: "form",
-            width: 320,
-            autoScroll: true,
-            items: [{
-                xtype: "fieldset",
-                ref: "spatialFieldset",
-                title: this.queryByLocationText,
-                anchor: "97%",
-                // This fieldset never expands
-                style: "margin-bottom:0; border-left-color:transparent; border-right-color:transparent; border-width:1px 1px 0 1px; padding-bottom:0",
-                checkboxToggle: true
-            }, {
-                xtype: "fieldset",
-                ref: "attributeFieldset",
-                title: this.queryByAttributesText,
-                anchor: "97%",
-                style: "margin-bottom:0",
-                checkboxToggle: true
-            }],
-            bbar: ["->", {
-                text: this.cancelButtonText,
-                iconCls: "cancel",
-                handler: function() {
-                    var ownerCt = this.outputTarget ? queryForm.ownerCt :
-                        queryForm.ownerCt.ownerCt;
-                    if (ownerCt && ownerCt instanceof Ext.Window) {
-                        ownerCt.hide();
-                    }
-                    addFilterBuilder(
-                        featureManager, featureManager.layerRecord,
-                        featureManager.schema
-                    );
-                    featureManager.loadFeatures();
-                }
-            }, {
-                text: this.queryActionText,
-                iconCls: "gxp-icon-find",
-                handler: function() {
-                    var filters = [];
-                    if (queryForm.spatialFieldset.collapsed !== true) {
-                        filters.push(new OpenLayers.Filter.Spatial({
-                            type: OpenLayers.Filter.Spatial.BBOX,
-                            property: featureManager.featureStore.geometryName,
-                            value: this.target.mapPanel.map.getExtent()
-                        }));
-                    }
-                    if (queryForm.attributeFieldset.collapsed !== true) {
-                        var attributeFilter = queryForm.filterBuilder.getFilter();
-                        attributeFilter && filters.push(attributeFilter);
-                    }
-                    featureManager.loadFeatures(filters.length > 1 ?
-                        new OpenLayers.Filter.Logical({
-                            type: OpenLayers.Filter.Logical.AND,
-                            filters: filters
-                        }) :
-                        filters[0]
-                    );
-                },
-                scope: this
-            }]
-        }, config || {});
-        var queryForm = gxp.plugins.QueryForm.superclass.addOutput.call(this, config);
-        
-        var expandContainer = null, userExpand = true;
-        if (this.autoExpand) {
-            expandContainer = Ext.getCmp(this.autoExpand);
-            function stopAutoExpand() {
-                if (userExpand) {
-                    expandContainer.un('expand', stopAutoExpand);
-                    expandContainer.un('collapse', stopAutoExpand);
-                    expandContainer = null;
-                }
-                userExpand = true;
-            }
-            expandContainer.on({
-                'expand': stopAutoExpand,
-                'collapse': stopAutoExpand
-            });
-        }
-        var addFilterBuilder = function(mgr, rec, schema) {
-            queryForm.attributeFieldset.removeAll();
-            queryForm.setDisabled(!schema);
-            if (expandContainer) {
-                userExpand = false;
-                expandContainer[schema ? 'expand' : 'collapse']();
-                // if we're wrapped in another collapsed container, expand it
-                if (schema && expandContainer && expandContainer.ownerCt && expandContainer.ownerCt instanceof Ext.Panel) {
-                    expandContainer.ownerCt.expand();
-                }
-            }
-            if (schema) {
-                queryForm.attributeFieldset.add({
-                    xtype: "gxp_filterbuilder",
-                    ref: "../filterBuilder",
-                    attributes: schema,
-                    allowBlank: true,
-                    allowGroups: false
-                });
-                queryForm.spatialFieldset.expand();
-                queryForm.attributeFieldset.expand();
-            } else {
-                queryForm.attributeFieldset.rendered && queryForm.attributeFieldset.collapse();
-                queryForm.spatialFieldset.rendered && queryForm.spatialFieldset.collapse();
-            }
-            queryForm.attributeFieldset.doLayout();
-        };
-        featureManager.on("layerchange", addFilterBuilder);
-        addFilterBuilder(featureManager,
-            featureManager.layerRecord, featureManager.schema
-        );
-        
-        featureManager.on({
-            "beforequery": function() {
-                new Ext.LoadMask(queryForm.getEl(), {
-                    store: featureManager.featureStore,
-                    msg: this.queryMsg
-                }).show();
-            },
-            "query": function(tool, store) {
-                if (store) {
-                    if (this.target.tools[this.featureManager].featureStore !== null) {
-                        store.getCount() || Ext.Msg.show({
-                            title: this.noFeaturesTitle,
-                            msg: this.noFeaturesMessage,
-                            buttons: Ext.Msg.OK,
-                            icon: Ext.Msg.INFO
-                        });
-                        if (this.autoHide) {
-                            var ownerCt = this.outputTarget ? queryForm.ownerCt :
-                                queryForm.ownerCt.ownerCt;
-                            ownerCt instanceof Ext.Window && ownerCt.hide();
-                        }
-                    }
-                }
-            },
-            scope: this
-        });
-        
-        return queryForm;
-    }
-        
-});
-
-Ext.preg(gxp.plugins.QueryForm.prototype.ptype, gxp.plugins.QueryForm);
-
 /** FILE: OpenLayers/Format/WMSCapabilities.js **/
 /* Copyright (c) 2006-2013 by OpenLayers Contributors (see authors.txt for
  * full list of contributors). Published under the 2-clause BSD license.
@@ -75249,7 +75444,11 @@ gxp.plugins.WMSSource = Ext.extend(gxp.plugins.LayerSource, {
      */
     onAuthorizationChange: function() {
         if (this.store && this.url.charAt(0) === "/") {
-            this.store.reload();
+            var lastOptions = this.store.lastOptions || {params: {}};
+            Ext.apply(lastOptions.params, {
+                '_dc': Math.random()
+            });
+            this.store.reload(lastOptions);
         }
     },
 
@@ -75393,28 +75592,9 @@ gxp.plugins.WMSSource = Ext.extend(gxp.plugins.LayerSource, {
             }
         });
         if (lazy) {
-            this.lazy = true;
-            // ping server of lazy source with an incomplete request, to see if
-            // it is available
-            Ext.Ajax.request({
-                method: "GET",
-                url: this.url,
-                params: {SERVICE: "WMS"},
-                callback: function(options, success, response) {
-                    var status = response.status;
-                    // responseText should not be empty (OGCException)
-                    if (status >= 200 && status < 403 && response.responseText) {
-                        this.ready = true;
-                        this.fireEvent("ready", this);
-                    } else {
-                        this.fireEvent("failure", this,
-                            "Layer source not available.",
-                            "Unable to contact WMS service."
-                        );
-                    }
-                },
-                scope: this
-            });
+            this.lazy = lazy;
+            this.ready = true;
+            this.fireEvent("ready", this);
         }
     },
     
@@ -75474,13 +75654,42 @@ gxp.plugins.WMSSource = Ext.extend(gxp.plugins.LayerSource, {
                 cql_filter: config.cql_filter,
                 format: config.format
             }, {
-                projection: srs
+                projection: srs,
+                eventListeners: {
+                  tileloaded: this.countAlive,
+                  tileerror: this.countAlive,
+                  scope: this
+                }
             }
         ));
         record.json = config;
         return record;
     },
-     
+
+    countAlive: function(evt) {
+        if (!('_alive' in evt.object.metadata)) {
+            evt.object.metadata._alive = 0;
+            evt.object.events.register('loadend', this, this.removeDeadLayer);
+        }
+        evt.object.metadata._alive += (evt.type == 'tileerror' ? -1 : 1);
+    },
+
+    removeDeadLayer: function(evt) {
+        evt.object.events.un({
+            'tileloaded': this.countAlive,
+            'tileerror': this.countAlive,
+            'loadend': this.removeDeadLayer,
+            scope: this
+        });
+        if (evt.object.metadata._alive === 0) {
+            this.target.mapPanel.map.removeLayer(evt.object);
+            if (window.console) {
+              console.debug('Unavailable layer ' + evt.object.name + ' removed.');
+            }
+        }
+        delete evt.object.metadata._alive;
+    },
+
     /** api: method[createLayerRecord]
      *  :arg config:  ``Object``  The application config for this layer.
      *  :returns: ``GeoExt.data.LayerRecord`` or null when the source is lazy.
@@ -75533,13 +75742,11 @@ gxp.plugins.WMSSource = Ext.extend(gxp.plugins.LayerSource, {
             } else {
                 var llbbox = original.get("llbbox");
                 if (llbbox) {
-                    var extent = OpenLayers.Bounds.fromArray(llbbox).transform("EPSG:4326", projection);
-                    // make sure maxExtent is valid (transform does not succeed for all llbbox)
-                    if ((1 / extent.getHeight() > 0) && (1 / extent.getWidth() > 0)) {
-                        // maxExtent has infinite or non-numeric width or height
-                        // in this case, the map maxExtent must be specified in the config
-                        maxExtent = extent;
-                    }
+                    llbbox[0] = Math.max(llbbox[0], -180);
+                    llbbox[1] = Math.max(llbbox[1], -90);
+                    llbbox[2] = Math.min(llbbox[2], 180);
+                    llbbox[3] = Math.min(llbbox[3], 90);
+                    maxExtent = OpenLayers.Bounds.fromArray(llbbox).transform("EPSG:4326", projection);
                 }
             }
             
@@ -75563,7 +75770,7 @@ gxp.plugins.WMSSource = Ext.extend(gxp.plugins.LayerSource, {
 
             layer.setName(config.title || layer.name);
             layer.addOptions({
-                attribution: layer.attribution,
+                attribution: layer.attribution || config.attribution,
                 maxExtent: maxExtent,
                 restrictedExtent: maxExtent,
                 singleTile: singleTile,
@@ -75903,7 +76110,8 @@ gxp.plugins.WMSSource = Ext.extend(gxp.plugins.LayerSource, {
             cql_filter: params.CQL_FILTER,
             minscale: options.minScale,
             maxscale: options.maxScale,
-            infoFormat: record.get("infoFormat")
+            infoFormat: record.get("infoFormat"),
+            attribution: layer.attribution
         });
     },
     
@@ -75916,6 +76124,1408 @@ gxp.plugins.WMSSource = Ext.extend(gxp.plugins.LayerSource, {
 });
 
 Ext.preg(gxp.plugins.WMSSource.prototype.ptype, gxp.plugins.WMSSource);
+
+/** FILE: plugins/CatalogueSource.js **/
+/**
+ * Copyright (c) 2008-2011 The Open Planning Project
+ * 
+ * Published under the GPL license.
+ * See https://github.com/opengeo/gxp/raw/master/license.txt for the full text
+ * of the license.
+ */
+
+/**
+ * @requires plugins/WMSSource.js
+ */
+
+/** api: (define)
+ *  module = gxp.plugins
+ *  class = CatalogueSource
+ */
+
+/** api: (extends)
+ *  plugins/WMSSource.js
+ */
+Ext.namespace("gxp.plugins");
+
+/** api: constructor
+ *  .. class:: CatalogueSource(config)
+ *
+ *    Base class for catalogue sources uses for search.
+ */
+gxp.plugins.CatalogueSource = Ext.extend(gxp.plugins.WMSSource, {
+
+    /** api: config[url]
+     *  ``String`` Online resource of the catalogue service.
+     */
+    url: null,
+
+    /** api: config[yx]
+     *  ``Object`` Members in the yx object are used to determine if a CRS URN
+     *     corresponds to a CRS with y,x axis order.  Member names are CRS URNs
+     *     and values are boolean.
+     */
+    yx: null,
+
+    /** api: config[title]
+     *  ``String`` Optional title for this source.
+     */
+    title: null,
+
+    /** private: property[lazy]
+     *  ``Boolean`` This source always operates lazy so without GetCapabilities
+     */
+    lazy: true,
+
+    /** api: config[hidden]
+     *  ``Boolean`` Normally we do not want these sources to show up in the
+     *  AddLayers dialog for the source combobox. Set to false for a certain 
+     *  source to show up anyway whenever that makes sense, e.g. by using a
+     *  catalogue source to retrieve all the layers for a capabilities grid.
+     */
+    hidden: true,
+
+    /** api: config[proxyOptions]
+     *  ``Object``
+     *  An optional object to pass to the constructor of the ProtocolProxy.
+     *  This can be used e.g. to set listeners.
+     */
+    proxyOptions: null,
+
+    /** api: method[describeLayer]
+     *  :arg rec: ``GeoExt.data.LayerRecord`` the layer to issue a WMS
+     *      DescribeLayer request for
+     *  :arg callback: ``Function`` Callback function. Will be called with
+     *      an ``Ext.data.Record`` from a ``GeoExt.data.DescribeLayerStore``
+     *      as first argument, or false if the WMS does not support
+     *      DescribeLayer.
+     *  :arg scope: ``Object`` Optional scope for the callback.
+     *
+     *  Get a DescribeLayer response from this source's WMS.
+     */
+    describeLayer: function(rec, callback, scope) {
+        // it makes no sense to keep a describeLayerStore since
+        // everything is lazy and layers can come from different WMSs.
+        var recordType = Ext.data.Record.create(
+            [
+                {name: "owsType", type: "string"},
+                {name: "owsURL", type: "string"},
+                {name: "typeName", type: "string"}
+            ]
+        );
+        var record = new recordType({
+            owsType: "WFS",
+            owsURL: rec.get('url'),
+            typeName: rec.get('name')
+        });
+        callback.call(scope, record);
+    },
+
+    /** private: method[destroy]
+     */
+    destroy: function() {
+        this.store && this.store.destroy();
+        this.store = null;
+        gxp.plugins.CatalogueSource.superclass.destroy.apply(this, arguments);
+    }
+
+    /** api: method[getPagingStart]
+     *  :return: ``Integer`` Where does paging start at?
+     *
+     *  To be implemented by subclasses
+     */
+
+    /** api: method[getPagingParamNames]
+     *  :return: ``Object`` with keys start and limit.
+     *
+     *  Get the names of the parameters to use for paging.
+     *
+     *  To be implemented by subclasses
+     */
+
+    /** api: method[filter]
+     *  Filter the store by querying the catalogue service.
+     *  :param options: ``Object`` An object with the following keys:
+     *
+     * .. list-table::
+     *     :widths: 20 80
+     * 
+     *     * - ``queryString``
+     *       - the search string
+     *     * - ``limit`` 
+     *       - the maximum number of records to retrieve
+     *     * - ``filters``
+     *       - additional filters to include in the query
+     *
+     *  To be implemented by subclasses
+     */
+
+});
+
+/** FILE: OpenLayers/Format/CSWGetRecords.js **/
+/* Copyright (c) 2006-2013 by OpenLayers Contributors (see authors.txt for
+ * full list of contributors). Published under the 2-clause BSD license.
+ * See license.txt in the OpenLayers distribution or repository for the
+ * full text of the license. */
+
+/**
+ * @requires OpenLayers/Format.js
+ */
+
+/**
+ * Class: OpenLayers.Format.CSWGetRecords
+ * Default version is 2.0.2.
+ *
+ * Returns:
+ * {<OpenLayers.Format>} A CSWGetRecords format of the given version.
+ */
+OpenLayers.Format.CSWGetRecords = function(options) {
+    options = OpenLayers.Util.applyDefaults(
+        options, OpenLayers.Format.CSWGetRecords.DEFAULTS
+    );
+    var cls = OpenLayers.Format.CSWGetRecords["v"+options.version.replace(/\./g, "_")];
+    if(!cls) {
+        throw "Unsupported CSWGetRecords version: " + options.version;
+    }
+    return new cls(options);
+};
+
+/**
+ * Constant: DEFAULTS
+ * {Object} Default properties for the CSWGetRecords format.
+ */
+OpenLayers.Format.CSWGetRecords.DEFAULTS = {
+    "version": "2.0.2"
+};
+
+/** FILE: OpenLayers/Format/CSWGetRecords/v2_0_2.js **/
+/* Copyright (c) 2006-2013 by OpenLayers Contributors (see authors.txt for
+ * full list of contributors). Published under the 2-clause BSD license.
+ * See license.txt in the OpenLayers distribution or repository for the
+ * full text of the license. */
+
+/**
+ * @requires OpenLayers/Format/XML.js
+ * @requires OpenLayers/Format/CSWGetRecords.js
+ * @requires OpenLayers/Format/Filter/v1_0_0.js
+ * @requires OpenLayers/Format/Filter/v1_1_0.js
+ * @requires OpenLayers/Format/OWSCommon/v1_0_0.js
+ */
+
+/**
+ * Class: OpenLayers.Format.CSWGetRecords.v2_0_2
+ *     A format for creating CSWGetRecords v2.0.2 transactions. 
+ *     Create a new instance with the
+ *     <OpenLayers.Format.CSWGetRecords.v2_0_2> constructor.
+ *
+ * Inherits from:
+ *  - <OpenLayers.Format.XML>
+ */
+OpenLayers.Format.CSWGetRecords.v2_0_2 = OpenLayers.Class(OpenLayers.Format.XML, {
+    
+    /**
+     * Property: namespaces
+     * {Object} Mapping of namespace aliases to namespace URIs.
+     */
+    namespaces: {
+        csw: "http://www.opengis.net/cat/csw/2.0.2",
+        dc: "http://purl.org/dc/elements/1.1/",
+        dct: "http://purl.org/dc/terms/",
+        gmd: "http://www.isotc211.org/2005/gmd",
+        geonet: "http://www.fao.org/geonetwork",
+        ogc: "http://www.opengis.net/ogc",
+        ows: "http://www.opengis.net/ows",
+        xlink: "http://www.w3.org/1999/xlink",
+        xsi: "http://www.w3.org/2001/XMLSchema-instance",
+        xmlns: "http://www.w3.org/2000/xmlns/"
+    },
+    
+    /**
+     * Property: defaultPrefix
+     * {String} The default prefix (used by Format.XML).
+     */
+    defaultPrefix: "csw",
+    
+    /**
+     * Property: version
+     * {String} CSW version number.
+     */
+    version: "2.0.2",
+    
+    /**
+     * Property: schemaLocation
+     * {String} http://www.opengis.net/cat/csw/2.0.2
+     *   http://schemas.opengis.net/csw/2.0.2/CSW-discovery.xsd
+     */
+    schemaLocation: "http://www.opengis.net/cat/csw/2.0.2 http://schemas.opengis.net/csw/2.0.2/CSW-discovery.xsd",
+
+    /**
+     * APIProperty: requestId
+     * {String} Value of the requestId attribute of the GetRecords element.
+     */
+    requestId: null,
+
+    /**
+     * APIProperty: resultType
+     * {String} Value of the resultType attribute of the GetRecords element,
+     *     specifies the result type in the GetRecords response, "hits" is
+     *     the default.
+     */
+    resultType: null,
+
+    /**
+     * APIProperty: outputFormat
+     * {String} Value of the outputFormat attribute of the GetRecords element,
+     *     specifies the format of the GetRecords response,
+     *     "application/xml" is the default.
+     */
+    outputFormat: null,
+
+    /**
+     * APIProperty: outputSchema
+     * {String} Value of the outputSchema attribute of the GetRecords element,
+     *     specifies the schema of the GetRecords response.
+     */
+    outputSchema: null,
+
+    /**
+     * APIProperty: startPosition
+     * {String} Value of the startPosition attribute of the GetRecords element,
+     *     specifies the start position (offset+1) for the GetRecords response,
+     *     1 is the default.
+     */
+    startPosition: null,
+
+    /**
+     * APIProperty: maxRecords
+     * {String} Value of the maxRecords attribute of the GetRecords element,
+     *     specifies the maximum number of records in the GetRecords response,
+     *     10 is the default.
+     */
+    maxRecords: null,
+
+    /**
+     * APIProperty: DistributedSearch
+     * {String} Value of the csw:DistributedSearch element, used when writing
+     *     a csw:GetRecords document.
+     */
+    DistributedSearch: null,
+
+    /**
+     * APIProperty: ResponseHandler
+     * {Array({String})} Values of the csw:ResponseHandler elements, used when
+     *     writting a csw:GetRecords document.
+     */
+    ResponseHandler: null,
+
+    /**
+     * APIProperty: Query
+     * {String} Value of the csw:Query element, used when writing a csw:GetRecords
+     *     document.
+     */
+    Query: null,
+
+    /**
+     * Property: regExes
+     * Compiled regular expressions for manipulating strings.
+     */
+    regExes: {
+        trimSpace: (/^\s*|\s*$/g),
+        removeSpace: (/\s*/g),
+        splitSpace: (/\s+/),
+        trimComma: (/\s*,\s*/g)
+    },
+
+    /**
+     * Constructor: OpenLayers.Format.CSWGetRecords.v2_0_2
+     * A class for parsing and generating CSWGetRecords v2.0.2 transactions.
+     *
+     * Parameters:
+     * options - {Object} Optional object whose properties will be set on the
+     *     instance.
+     *
+     * Valid options properties (documented as class properties):
+     * - requestId
+     * - resultType
+     * - outputFormat
+     * - outputSchema
+     * - startPosition
+     * - maxRecords
+     * - DistributedSearch
+     * - ResponseHandler
+     * - Query
+     */
+    initialize: function(options) {
+        OpenLayers.Format.XML.prototype.initialize.apply(this, [options]);
+    },
+
+    /**
+     * APIMethod: read
+     * Parse the response from a GetRecords request.
+     */
+    read: function(data) {
+        if(typeof data == "string") { 
+            data = OpenLayers.Format.XML.prototype.read.apply(this, [data]);
+        }
+        if(data && data.nodeType == 9) {
+            data = data.documentElement;
+        }
+        var obj = {};
+        this.readNode(data, obj);
+        return obj;
+    },
+    
+    /**
+     * Property: readers
+     * Contains public functions, grouped by namespace prefix, that will
+     *     be applied when a namespaced node is found matching the function
+     *     name.  The function will be applied in the scope of this parser
+     *     with two arguments: the node being read and a context object passed
+     *     from the parent.
+     */
+    readers: {
+        "csw": {
+            "GetRecordsResponse": function(node, obj) {
+                obj.records = [];
+                this.readChildNodes(node, obj);
+                var version = this.getAttributeNS(node, "", 'version');
+                if (version != "") {
+                    obj.version = version;
+                }
+            },
+            "RequestId": function(node, obj) {
+                obj.RequestId = this.getChildValue(node);
+            },
+            "SearchStatus": function(node, obj) {
+                obj.SearchStatus = {};
+                var timestamp = this.getAttributeNS(node, "", 'timestamp');
+                if (timestamp != "") {
+                    obj.SearchStatus.timestamp = timestamp;
+                }
+            },
+            "SearchResults": function(node, obj) {
+                this.readChildNodes(node, obj);
+                var attrs = node.attributes;
+                var SearchResults = {};
+                for(var i=0, len=attrs.length; i<len; ++i) {
+                    if ((attrs[i].name == "numberOfRecordsMatched") ||
+                        (attrs[i].name == "numberOfRecordsReturned") ||
+                        (attrs[i].name == "nextRecord")) {
+                        SearchResults[attrs[i].name] = parseInt(attrs[i].nodeValue);
+                    } else {
+                        SearchResults[attrs[i].name] = attrs[i].nodeValue;
+                    }
+                }
+                obj.SearchResults = SearchResults;
+            },
+            "SummaryRecord": function(node, obj) {
+                var record = {type: "SummaryRecord"};
+                this.readChildNodes(node, record);
+                obj.records.push(record);
+            },
+            "BriefRecord": function(node, obj) {
+                var record = {type: "BriefRecord"};
+                this.readChildNodes(node, record);
+                obj.records.push(record);
+            },
+            "DCMIRecord": function(node, obj) {
+                var record = {type: "DCMIRecord"};
+                this.readChildNodes(node, record);
+                obj.records.push(record);
+            },
+            "Record": function(node, obj) {
+                var record = {type: "Record"};
+                this.readChildNodes(node, record);
+                obj.records.push(record);
+            },
+            "*": function(node, obj) {
+                var name = node.localName || node.nodeName.split(":").pop();
+                obj[name] = this.getChildValue(node);
+            }
+        },
+        "geonet": {
+            "info": function(node, obj) {
+                var gninfo = {};
+                this.readChildNodes(node, gninfo);
+                obj.gninfo = gninfo;
+            }
+        },
+        "dc": {
+            // audience, contributor, coverage, creator, date, description, format,
+            // identifier, language, provenance, publisher, relation, rights,
+            // rightsHolder, source, subject, title, type, URI
+            "*": function(node, obj) {
+                var name = node.localName || node.nodeName.split(":").pop();
+                if (!(OpenLayers.Util.isArray(obj[name]))) {
+                    obj[name] = [];
+                }
+                var dc_element = {};
+                var attrs = node.attributes;
+                for(var i=0, len=attrs.length; i<len; ++i) {
+                    dc_element[attrs[i].name] = attrs[i].nodeValue;
+                }
+                dc_element.value = this.getChildValue(node);
+                if (dc_element.value != "") {
+                    obj[name].push(dc_element);
+                }
+            }
+        },
+        "dct": {
+            // abstract, modified, spatial
+            "*": function(node, obj) {
+                var name = node.localName || node.nodeName.split(":").pop();
+                if (!(OpenLayers.Util.isArray(obj[name]))) {
+                    obj[name] = [];
+                }
+                obj[name].push(this.getChildValue(node));
+            }
+        },
+        "ows": OpenLayers.Util.applyDefaults({
+            "BoundingBox": function(node, obj) {
+                if (obj.bounds) {
+                    obj.BoundingBox = [{crs: obj.projection, value: 
+                        [
+                            obj.bounds.left, 
+                            obj.bounds.bottom, 
+                            obj.bounds.right, 
+                            obj.bounds.top
+                    ]
+                    }];
+                    delete obj.projection;
+                    delete obj.bounds;
+                }
+                OpenLayers.Format.OWSCommon.v1_0_0.prototype.readers["ows"]["BoundingBox"].apply(
+                    this, arguments);
+            }
+        }, OpenLayers.Format.OWSCommon.v1_0_0.prototype.readers["ows"])
+    },
+    
+    /**
+     * Method: write
+     * Given an configuration js object, write a CSWGetRecords request. 
+     *
+     * Parameters:
+     * options - {Object} A object mapping the request.
+     *
+     * Returns:
+     * {String} A serialized CSWGetRecords request.
+     */
+    write: function(options) {
+        var node = this.writeNode("csw:GetRecords", options);
+        this.setAttributeNS(
+            node, this.namespaces.xmlns,
+            "xmlns:gmd", this.namespaces.gmd
+        );
+        return OpenLayers.Format.XML.prototype.write.apply(this, [node]);
+    },
+
+    /**
+     * Property: writers
+     * As a compliment to the readers property, this structure contains public
+     *     writing functions grouped by namespace alias and named like the
+     *     node names they produce.
+     */
+    writers: {
+        "csw": {
+            "GetRecords": function(options) {
+                if (!options) {
+                    options = {};
+                }
+                var node = this.createElementNSPlus("csw:GetRecords", {
+                    attributes: {
+                        service: "CSW",
+                        version: this.version,
+                        requestId: options.requestId || this.requestId,
+                        resultType: options.resultType || this.resultType,
+                        outputFormat: options.outputFormat || this.outputFormat,
+                        outputSchema: options.outputSchema || this.outputSchema,
+                        startPosition: options.startPosition || this.startPosition,
+                        maxRecords: options.maxRecords || this.maxRecords
+                    }
+                });
+                if (options.DistributedSearch || this.DistributedSearch) {
+                    this.writeNode(
+                        "csw:DistributedSearch",
+                        options.DistributedSearch || this.DistributedSearch,
+                        node
+                    );
+                }
+                var ResponseHandler = options.ResponseHandler || this.ResponseHandler;
+                if (OpenLayers.Util.isArray(ResponseHandler) && ResponseHandler.length > 0) {
+                    // ResponseHandler must be a non-empty array
+                    for(var i=0, len=ResponseHandler.length; i<len; i++) {
+                        this.writeNode(
+                            "csw:ResponseHandler",
+                            ResponseHandler[i],
+                            node
+                        );
+                    }
+                }
+                this.writeNode("Query", options.Query || this.Query, node);
+                return node;
+            },
+            "DistributedSearch": function(options) {
+                var node = this.createElementNSPlus("csw:DistributedSearch", {
+                    attributes: {
+                        hopCount: options.hopCount
+                    }
+                });
+                return node;
+            },
+            "ResponseHandler": function(options) {
+                var node = this.createElementNSPlus("csw:ResponseHandler", {
+                    value: options.value
+                });
+                return node;
+            },
+            "Query": function(options) {
+                if (!options) {
+                    options = {};
+                }
+                var node = this.createElementNSPlus("csw:Query", {
+                    attributes: {
+                        typeNames: options.typeNames || "csw:Record"
+                    }
+                });
+                var ElementName = options.ElementName;
+                if (OpenLayers.Util.isArray(ElementName) && ElementName.length > 0) {
+                    // ElementName must be a non-empty array
+                    for(var i=0, len=ElementName.length; i<len; i++) {
+                        this.writeNode(
+                            "csw:ElementName",
+                            ElementName[i],
+                            node
+                        );
+                    }
+                } else {
+                    this.writeNode(
+                        "csw:ElementSetName",
+                        options.ElementSetName || {value: 'summary'},
+                        node
+                    );
+                }
+                if (options.Constraint) {
+                    this.writeNode(
+                        "csw:Constraint",
+                        options.Constraint,
+                        node
+                    );
+                }
+                if (options.SortBy) {
+                    this.writeNode(
+                        "ogc:SortBy",
+                        options.SortBy,
+                        node
+                    );
+                }
+                return node;
+            },
+            "ElementName": function(options) {
+                var node = this.createElementNSPlus("csw:ElementName", {
+                    value: options.value
+                });
+                return node;
+            },
+            "ElementSetName": function(options) {
+                var node = this.createElementNSPlus("csw:ElementSetName", {
+                    attributes: {
+                        typeNames: options.typeNames
+                    },
+                    value: options.value
+                });
+                return node;
+            },
+            "Constraint": function(options) {
+                var node = this.createElementNSPlus("csw:Constraint", {
+                    attributes: {
+                        version: options.version
+                    }
+                });
+                if (options.Filter) {
+                    var format = new OpenLayers.Format.Filter({
+                        version: options.version
+                    });
+                    node.appendChild(format.write(options.Filter));
+                } else if (options.CqlText) {
+                    var child = this.createElementNSPlus("CqlText", {
+                        value: options.CqlText.value
+                    });
+                    node.appendChild(child);
+                }
+                return node;
+            }
+        },
+        "ogc": OpenLayers.Format.Filter.v1_1_0.prototype.writers["ogc"]
+    },
+   
+    CLASS_NAME: "OpenLayers.Format.CSWGetRecords.v2_0_2" 
+});
+
+/** FILE: GeoExt/data/CSWRecordsReader.js **/
+/**
+ * Copyright (c) 2008-2012 The Open Source Geospatial Foundation
+ * 
+ * Published under the BSD license.
+ * See http://svn.geoext.org/core/trunk/geoext/license.txt for the full text
+ * of the license.
+ */
+
+/**
+ * @require OpenLayers/Format/CSWGetRecords/v2_0_2.js
+ */
+
+/** api: (define)
+ *  module = GeoExt.data
+ *  class = CSWRecordsReader
+ *  base_link = `Ext.data.JsonReader <http://extjs.com/deploy/dev/docs/?class=Ext.data.JsonReader>`_
+ */
+
+Ext.namespace("GeoExt.data");
+
+/** api: example
+ *  Typical usage in a store:
+ * 
+ *  .. code-block:: javascript
+ *     
+ *      var store = new Ext.data.Store({
+ *          proxy: new GeoExt.data.ProtocolProxy({
+ *              protocol: new OpenLayers.Protocol.CSW({
+ *                  url: "http://demo.geonode.org/geonetwork/srv/en/csw"
+ *              })
+ *          }),
+ *          reader: new GeoExt.data.CSWRecordsReader({
+ *             fields: ['title', 'subject', 'URI', 'bounds', 'projection']
+ *          })
+ *      });
+ *      
+ */
+
+/** api: constructor
+ *  .. class:: CSWRecordsReader(meta, recordType)
+ *  
+ *      :param meta: ``Object`` Reader configuration.
+ *      :param recordType: ``Array | Ext.data.Record`` An array of field
+ *          configuration objects or a record object.  Default is
+ *          :class:`Ext.data.Record`.
+ *   
+ *      Data reader class to create an array of records from a CSW
+ *      GetRecords response. The raw response from the OpenLayers parser
+ *      is available through the jsonData property.
+ */
+GeoExt.data.CSWRecordsReader = function(meta, recordType) {
+    meta = meta || {};
+    if(!meta.format) {
+        meta.format = new OpenLayers.Format.CSWGetRecords();
+    }
+    if(!meta.root) {
+        meta.root = 'records';
+    }
+    GeoExt.data.CSWRecordsReader.superclass.constructor.call(
+        this, meta, recordType
+    );
+};
+
+Ext.extend(GeoExt.data.CSWRecordsReader, Ext.data.JsonReader, {
+
+    /** private: method[read]
+     *  :param data: ``XMLHttpRequest | OpenLayers.Protocol.Response`` If a
+     *  ProtocolProxy is configured with OpenLayers.Protocol.CSW data will be
+     *  ``OpenLayers.Protocol.Response``. Otherwise data will be the 
+     * ``XMLHttpRequest`` object.
+     *  :return: ``Object`` A data block which is used by an
+     *      ``Ext.data.Store`` as a cache of ``Ext.data.Record``
+     *      objects.
+     */
+    read: function(data) {
+        var o = data.data;
+        if (!o) {
+            o = data.responseXML;
+            if(!o || !o.documentElement) {
+                o = data.responseText;
+            }
+        }
+        return this.readRecords(o);
+    },
+
+    /** private: method[readRecords]
+     *  :param data: ``DOMElement | String | Object`` A document
+     *      element or XHR response string.
+     *  :return: ``Object`` A data block which is used by an
+     *      ``Ext.data.Store`` as a cache of ``Ext.data.Record``
+     *      objects.
+     */
+    readRecords: function(data) {
+        if(typeof data === "string" || data.nodeType) {
+            data = this.meta.format.read(data);
+        }
+        if (data.success === false) {
+            throw new Ext.data.DataReader.Error("invalid-response", data);
+        }
+        var result = GeoExt.data.CSWRecordsReader.superclass.readRecords.call(
+            this, data
+        );
+        // post-process so we flatten simple objects with a value property
+        Ext.each(result.records, function(record) {
+            for (var key in record.data) {
+                var value = record.data[key];
+                if (value instanceof Array) {
+                    for (var i=0, ii=value.length; i<ii; ++i) {
+                        if (value[i] instanceof Object) {
+                            var size = 0;
+                            for (var property in value[i]) {
+                                if (value[i].hasOwnProperty(property)) {
+                                    size++;
+                                }
+                            }
+                            if (size === 1 && value[i].value) {
+                                value[i] = value[i].value;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+        if (data.SearchResults) {
+            result.totalRecords = data.SearchResults.numberOfRecordsMatched;
+        }
+        return result;
+    }
+});
+
+/** FILE: OpenLayers/Protocol/CSW.js **/
+/* Copyright (c) 2006-2013 by OpenLayers Contributors (see authors.txt for
+ * full list of contributors). Published under the 2-clause BSD license.
+ * See license.txt in the OpenLayers distribution or repository for the
+ * full text of the license. */
+
+/**
+ * @requires OpenLayers/Protocol.js
+ */
+
+/**
+ * Class: OpenLayers.Protocol.CSW
+ * Used to create a versioned CSW protocol. Default version is 2.0.2.
+ */
+OpenLayers.Protocol.CSW = function(options) {
+    options = OpenLayers.Util.applyDefaults(
+        options, OpenLayers.Protocol.CSW.DEFAULTS
+    );
+    var cls = OpenLayers.Protocol.CSW["v"+options.version.replace(/\./g, "_")];
+    if(!cls) {
+        throw "Unsupported CSW version: " + options.version;
+    }
+    return new cls(options);
+};
+
+/**
+ * Constant: OpenLayers.Protocol.CSW.DEFAULTS
+ */
+OpenLayers.Protocol.CSW.DEFAULTS = {
+    "version": "2.0.2"
+};
+
+/** FILE: OpenLayers/Protocol/CSW/v2_0_2.js **/
+/* Copyright (c) 2006-2013 by OpenLayers Contributors (see authors.txt for
+ * full list of contributors). Published under the 2-clause BSD license.
+ * See license.txt in the OpenLayers distribution or repository for the
+ * full text of the license. */
+
+/**
+ * @requires OpenLayers/Protocol/CSW.js
+ * @requires OpenLayers/Format/CSWGetRecords/v2_0_2.js
+ */
+
+/**
+ * Class: OpenLayers.Protocol.CSW.v2_0_2
+ * CS-W (Catalogue services for the Web) version 2.0.2 protocol.
+ *
+ * Inherits from:
+ *  - <OpenLayers.Protocol>
+ */
+OpenLayers.Protocol.CSW.v2_0_2 = OpenLayers.Class(OpenLayers.Protocol, {
+
+    /**
+     * Property: formatOptions
+     * {Object} Optional options for the format.  If a format is not provided,
+     *     this property can be used to extend the default format options.
+     */
+    formatOptions: null,
+
+    /**
+     * Constructor: OpenLayers.Protocol.CSW.v2_0_2
+     * A class for CSW version 2.0.2 protocol management.
+     *
+     * Parameters:
+     * options - {Object} Optional object whose properties will be set on the
+     *     instance.
+     */
+    initialize: function(options) {
+        OpenLayers.Protocol.prototype.initialize.apply(this, [options]);
+        if(!options.format) {
+            this.format = new OpenLayers.Format.CSWGetRecords.v2_0_2(OpenLayers.Util.extend({
+            }, this.formatOptions));
+        }
+    },
+
+    /**
+     * APIMethod: destroy
+     * Clean up the protocol.
+     */
+    destroy: function() {
+        if(this.options && !this.options.format) {
+            this.format.destroy();
+        }
+        this.format = null;
+        OpenLayers.Protocol.prototype.destroy.apply(this);
+    },
+
+    /**
+     * Method: read
+     * Construct a request for reading new records from the Catalogue.
+     */
+    read: function(options) {
+        options = OpenLayers.Util.extend({}, options);
+        OpenLayers.Util.applyDefaults(options, this.options || {});
+        var response = new OpenLayers.Protocol.Response({requestType: "read"});
+
+        var data = this.format.write(options.params || options);
+
+        response.priv = OpenLayers.Request.POST({
+            url: options.url,
+            callback: this.createCallback(this.handleRead, response, options),
+            params: options.params,
+            headers: options.headers,
+            data: data
+        });
+
+        return response;
+    },
+
+    /**
+     * Method: handleRead
+     * Deal with response from the read request.
+     *
+     * Parameters:
+     * response - {<OpenLayers.Protocol.Response>} The response object to pass
+     *     to the user callback.
+     *     This response is given a code property, and optionally a data property.
+     *     The latter represents the CSW records as returned by the call to
+     *     the CSW format read method.
+     * options - {Object} The user options passed to the read call.
+     */
+    handleRead: function(response, options) {
+        if(options.callback) {
+            var request = response.priv;
+            if(request.status >= 200 && request.status < 300) {
+                // success
+                response.data = this.parseData(request);
+                response.code = OpenLayers.Protocol.Response.SUCCESS;
+            } else {
+                // failure
+                response.code = OpenLayers.Protocol.Response.FAILURE;
+            }
+            options.callback.call(options.scope, response);
+        }
+    },
+
+    /**
+     * Method: parseData
+     * Read HTTP response body and return records
+     *
+     * Parameters:
+     * request - {XMLHttpRequest} The request object
+     *
+     * Returns:
+     * {Object} The CSW records as returned by the call to the format read method.
+     */
+    parseData: function(request) {
+        var doc = request.responseXML;
+        if(!doc || !doc.documentElement) {
+            doc = request.responseText;
+        }
+        if(!doc || doc.length <= 0) {
+            return null;
+        }
+        return this.format.read(doc);
+    },
+
+    CLASS_NAME: "OpenLayers.Protocol.CSW.v2_0_2"
+
+});
+
+/** FILE: plugins/CSWCatalogueSource.js **/
+/**
+ * Copyright (c) 2008-2011 The Open Planning Project
+ * 
+ * Published under the GPL license.
+ * See https://github.com/opengeo/gxp/raw/master/license.txt for the full text
+ * of the license.
+ */
+
+/**
+ * @requires plugins/CatalogueSource.js
+ * @requires GeoExt/data/CSWRecordsReader.js
+ * @requires GeoExt/data/ProtocolProxy.js
+ * @requires OpenLayers/Protocol/CSW/v2_0_2.js
+ */
+
+/** api: (define)
+ *  module = gxp.plugins
+ *  class = CSWCatalogueSource
+ */
+
+/** api: (extends)
+ *  plugins/CatalogueSource.js
+ */
+Ext.namespace("gxp.plugins");
+
+/** api: constructor
+ *  .. class:: CSWCatalogueSource(config)
+ *
+ *    Plugin for creating WMS layers lazily. The difference with the WMSSource
+ *    is that the url is configured on the layer not on the source. This means
+ *    that this source can create WMS layers for any url. This is particularly
+ *    useful when working against a Catalogue Service, such as a OGC:CS-W.
+ */
+gxp.plugins.CSWCatalogueSource = Ext.extend(gxp.plugins.CatalogueSource, {
+
+    /** api: ptype = gxp_cataloguesource */
+    ptype: "gxp_cataloguesource",
+
+    /** api: method[createStore]
+     *  Create the store that will be used for the CS-W searches.
+     */
+    createStore: function() {
+        this.store = new Ext.data.Store({
+            proxy: new GeoExt.data.ProtocolProxy(Ext.apply({
+                setParamsAsOptions: true,
+                protocol: new OpenLayers.Protocol.CSW({
+                    url: this.url
+                })
+            }, this.proxyOptions || {})),
+            reader: new GeoExt.data.CSWRecordsReader({
+                fields: ['title', 'abstract', 'URI', 'bounds', 'projection', 'references']
+            })
+        });
+        gxp.plugins.LayerSource.prototype.createStore.apply(this, arguments);
+    },
+
+    /** api: method[getPagingStart]
+     *  :return: ``Integer`` Where does paging start at?
+     */
+    getPagingStart: function() {
+        return 1;
+    },
+
+    /** api: method[getPagingParamNames]
+     *  :return: ``Object`` with keys start and limit.
+     *
+     *  Get the names of the parameters to use for paging.
+     */
+    getPagingParamNames: function() {
+        return {
+            start: 'startPosition',
+            limit: 'maxRecords'
+        };
+    },
+
+    /** private: method[getFullFilter]
+     *  :arg filter: ``OpenLayers.Filter`` The filter to add to the other existing 
+     *  filters. This is normally the free text search filter.
+     *  :arg otherFilters: ``Array``
+     *  :returns: ``OpenLayers.Filter`` The combined filter.
+     *
+     *  Get the filter to use in the CS-W query.
+     */
+    getFullFilter: function(filter, otherFilters) {
+        var filters = [];
+        if (filter !== undefined) {
+            filters.push(filter);
+        }
+        filters = filters.concat(otherFilters);
+        if (filters.length <= 1) {
+            return filters[0];
+        } else {
+            return new OpenLayers.Filter.Logical({
+                type: OpenLayers.Filter.Logical.AND,
+                filters: filters
+            });
+        }
+    },
+
+    /** api: method[filter]
+     *  Filter the store by querying the catalogue service.
+     *  :param options: ``Object`` An object with the following keys:
+     *
+     * .. list-table::
+     *     :widths: 20 80
+     * 
+     *     * - ``queryString``
+     *       - the search string
+     *     * - ``limit`` 
+     *       - the maximum number of records to retrieve
+     *     * - ``filters``
+     *       - additional filters to include in the query
+     */
+    filter: function(options) {
+        var filter = undefined;
+        if (options.queryString !== "") {
+            filter = new OpenLayers.Filter.Comparison({
+                type: OpenLayers.Filter.Comparison.LIKE,
+                matchCase: false,
+                property: 'csw:AnyText',
+                value: '*' + options.queryString + '*'
+            });
+        }
+        var data = {
+            "resultType": "results",
+            "maxRecords": options.limit,
+            "Query": {
+                "typeNames": "gmd:MD_Metadata",
+                "ElementSetName": {
+                    "value": "full"
+                }
+            }
+        };
+        var fullFilter = this.getFullFilter(filter, options.filters);
+        if (fullFilter !== undefined) {
+            Ext.apply(data.Query, {
+                "Constraint": {
+                    version: "1.1.0",
+                    Filter: fullFilter
+                }
+            });
+        }
+        Ext.apply(this.store.baseParams, data);
+        this.store.load();
+    }
+
+});
+
+Ext.preg(gxp.plugins.CSWCatalogueSource.prototype.ptype, gxp.plugins.CSWCatalogueSource);
+
+/** FILE: plugins/QueryForm.js **/
+/**
+ * Copyright (c) 2008-2011 The Open Planning Project
+ * 
+ * Published under the GPL license.
+ * See https://github.com/opengeo/gxp/raw/master/license.txt for the full text
+ * of the license.
+ */
+
+/**
+ * @requires plugins/Tool.js
+ * @include widgets/FilterBuilder.js
+ */
+
+/** api: (define)
+ *  module = gxp.plugins
+ *  class = QueryForm
+ */
+
+/** api: (extends)
+ *  plugins/Tool.js
+ */
+Ext.namespace("gxp.plugins");
+
+/** api: constructor
+ *  .. class:: QueryForm(config)
+ *
+ *    Plugin for performing queries on feature layers
+ *    TODO Replace this tool with something that is less like GeoEditor and
+ *    more like filtering.
+ */
+gxp.plugins.QueryForm = Ext.extend(gxp.plugins.Tool, {
+    
+    /** api: ptype = gxp_queryform */
+    ptype: "gxp_queryform",
+
+    /** api: config[featureManager]
+     *  ``String`` The id of the :class:`gxp.plugins.FeatureManager` to use
+     *  with this tool.
+     */
+    featureManager: null,
+    
+    /** api: config[autoHide]
+     *  ``Boolean`` Set to true if the output of this tool goes into an
+     *  ``Ext.Window`` that should be hidden when the query result is
+     *  available. Default is false.
+     */
+    autoHide: false,
+
+    /** private: property[schema]
+     *  ``GeoExt.data.AttributeStore``
+     */
+    schema: null,
+    
+    /** api: config[queryActionText]
+     *  ``String``
+     *  Text for query action (i18n).
+     */
+    queryActionText: "Query",
+    
+    /** api: config[cancelButtonText]
+     *  ``String``
+     *  Text for cancel button (i18n).
+     */
+    cancelButtonText: "Cancel",
+
+    /** api: config[queryMenuText]
+     *  ``String``
+     *  Text for query menu item (i18n).
+     */
+    queryMenuText: "Query layer",
+
+    /** api: config[queryActionTip]
+     *  ``String``
+     *  Text for query action tooltip (i18n).
+     */
+    queryActionTip: "Query the selected layer",
+
+    /** api: config[queryByLocationText]
+     *  ``String``
+     *  Text for query by location (i18n).
+     */
+    queryByLocationText: "Query by current map extent",
+
+    /** api: config[queryByAttributesText]
+     *  ``String``
+     *  Text for query by attributes (i18n).
+     */
+    queryByAttributesText: "Query by attributes",
+    
+    /** api: config[queryMsg]
+     *  ``String``
+     *  Text for query load mask (i18n).
+     */
+    queryMsg: "Querying...",
+    
+    /** api: config[noFeaturesTitle]
+     *  ``String``
+     *  Text for no features alert title (i18n)
+     */
+    noFeaturesTitle: "No Match",
+
+    /** api: config[noFeaturesMsg]
+     *  ``String``
+     *  Text for no features alert message (i18n)
+     */
+    noFeaturesMessage: "Your query did not return any results.",
+
+    /** api: config[actions]
+     *  ``Object`` By default, this tool creates a "Query" action to trigger
+     *  the output of this tool's form. Set to null if you want to include
+     *  the form permanently in your layout.
+     */
+    
+    /** api: config[outputAction]
+     *  ``Number`` By default, the "Query" action will trigger this tool's
+     *  form output. There is no need to change this unless you configure
+     *  custom ``actions``.
+     */
+    outputAction: 0,
+    
+    /** api: config[autoExpand]
+     *  ``String`` If set to the id of a container, the container will be
+     *  expanded when the Query Form is enabled, and collapsed when it is
+     *  disabled. Once the user manually expands/collapses the contaienr, the
+     *  user setting will stick for the current session.
+     */
+    autoExpand: null,
+    
+    /** api: method[addActions]
+     */
+    addActions: function(actions) {
+        if (!this.initialConfig.actions && !actions) {
+            actions = [{
+                text: this.queryActionText,
+                menuText: this.queryMenuText,
+                iconCls: "gxp-icon-find",
+                tooltip: this.queryActionTip,
+                disabled: true,
+                toggleGroup: this.toggleGroup,
+                enableToggle: true,
+                allowDepress: true,
+                toggleHandler: function(button, pressed) {
+                    if (this.autoExpand && this.output.length > 0) {
+                        var expandContainer = Ext.getCmp(this.autoExpand);
+                        expandContainer[pressed ? 'expand' : 'collapse']();
+                        if (pressed) {
+                            expandContainer.expand();
+                            if (expandContainer.ownerCt && expandContainer.ownerCt instanceof Ext.Panel) {
+                                expandContainer.ownerCt.expand();
+                            }
+                        } else {
+                            this.target.tools[this.featureManager].loadFeatures();
+                        }
+                    }
+                },
+                scope: this
+            }];
+        }
+        this.actions = gxp.plugins.QueryForm.superclass.addActions.apply(this, actions);
+        // support custom actions
+        if (this.actionTarget !== null && this.actions) {
+            this.target.tools[this.featureManager].on("layerchange", function(mgr, rec, schema) {
+                for (var i=this.actions.length-1; i>=0; --i) {
+                    this.actions[i].setDisabled(!schema);
+                }
+            }, this);
+        }
+    },
+
+    /** api: method[addOutput]
+     */
+    addOutput: function(config) {
+        var featureManager = this.target.tools[this.featureManager];
+
+        config = Ext.apply({
+            border: false,
+            bodyStyle: "padding: 10px",
+            layout: "form",
+            width: 320,
+            autoScroll: true,
+            items: [{
+                xtype: "fieldset",
+                ref: "spatialFieldset",
+                title: this.queryByLocationText,
+                anchor: "97%",
+                // This fieldset never expands
+                style: "margin-bottom:0; border-left-color:transparent; border-right-color:transparent; border-width:1px 1px 0 1px; padding-bottom:0",
+                checkboxToggle: true
+            }, {
+                xtype: "fieldset",
+                ref: "attributeFieldset",
+                title: this.queryByAttributesText,
+                anchor: "97%",
+                style: "margin-bottom:0",
+                checkboxToggle: true
+            }],
+            bbar: ["->", {
+                text: this.cancelButtonText,
+                iconCls: "cancel",
+                handler: function() {
+                    var ownerCt = this.outputTarget ? queryForm.ownerCt :
+                        queryForm.ownerCt.ownerCt;
+                    if (ownerCt && ownerCt instanceof Ext.Window) {
+                        ownerCt.hide();
+                    }
+                    addFilterBuilder(
+                        featureManager, featureManager.layerRecord,
+                        featureManager.schema
+                    );
+                    featureManager.loadFeatures();
+                }
+            }, {
+                text: this.queryActionText,
+                iconCls: "gxp-icon-find",
+                handler: function() {
+                    var filters = [];
+                    if (queryForm.spatialFieldset.collapsed !== true) {
+                        filters.push(new OpenLayers.Filter.Spatial({
+                            type: OpenLayers.Filter.Spatial.BBOX,
+                            property: featureManager.featureStore.geometryName,
+                            value: this.target.mapPanel.map.getExtent()
+                        }));
+                    }
+                    if (queryForm.attributeFieldset.collapsed !== true) {
+                        var attributeFilter = queryForm.filterBuilder.getFilter();
+                        attributeFilter && filters.push(attributeFilter);
+                    }
+                    featureManager.loadFeatures(filters.length > 1 ?
+                        new OpenLayers.Filter.Logical({
+                            type: OpenLayers.Filter.Logical.AND,
+                            filters: filters
+                        }) :
+                        filters[0]
+                    );
+                },
+                scope: this
+            }]
+        }, config || {});
+        var queryForm = gxp.plugins.QueryForm.superclass.addOutput.call(this, config);
+        
+        var expandContainer = null, userExpand = true;
+        if (this.autoExpand) {
+            expandContainer = Ext.getCmp(this.autoExpand);
+            function stopAutoExpand() {
+                if (userExpand) {
+                    expandContainer.un('expand', stopAutoExpand);
+                    expandContainer.un('collapse', stopAutoExpand);
+                    expandContainer = null;
+                }
+                userExpand = true;
+            }
+            expandContainer.on({
+                'expand': stopAutoExpand,
+                'collapse': stopAutoExpand
+            });
+        }
+        var addFilterBuilder = function(mgr, rec, schema) {
+            queryForm.attributeFieldset.removeAll();
+            queryForm.setDisabled(!schema);
+            if (expandContainer) {
+                userExpand = false;
+                expandContainer[schema ? 'expand' : 'collapse']();
+                // if we're wrapped in another collapsed container, expand it
+                if (schema && expandContainer && expandContainer.ownerCt && expandContainer.ownerCt instanceof Ext.Panel) {
+                    expandContainer.ownerCt.expand();
+                }
+            }
+            if (schema) {
+                queryForm.attributeFieldset.add({
+                    xtype: "gxp_filterbuilder",
+                    ref: "../filterBuilder",
+                    attributes: schema,
+                    allowBlank: true,
+                    allowGroups: false
+                });
+                queryForm.spatialFieldset.expand();
+                queryForm.attributeFieldset.expand();
+            } else {
+                queryForm.attributeFieldset.rendered && queryForm.attributeFieldset.collapse();
+                queryForm.spatialFieldset.rendered && queryForm.spatialFieldset.collapse();
+            }
+            queryForm.attributeFieldset.doLayout();
+        };
+        featureManager.on("layerchange", addFilterBuilder);
+        addFilterBuilder(featureManager,
+            featureManager.layerRecord, featureManager.schema
+        );
+        
+        featureManager.on({
+            "beforequery": function() {
+                new Ext.LoadMask(queryForm.getEl(), {
+                    store: featureManager.featureStore,
+                    msg: this.queryMsg
+                }).show();
+            },
+            "query": function(tool, store) {
+                if (store) {
+                    if (this.target.tools[this.featureManager].featureStore !== null) {
+                        store.getCount() || Ext.Msg.show({
+                            title: this.noFeaturesTitle,
+                            msg: this.noFeaturesMessage,
+                            buttons: Ext.Msg.OK,
+                            icon: Ext.Msg.INFO
+                        });
+                        if (this.autoHide) {
+                            var ownerCt = this.outputTarget ? queryForm.ownerCt :
+                                queryForm.ownerCt.ownerCt;
+                            ownerCt instanceof Ext.Window && ownerCt.hide();
+                        }
+                    }
+                }
+            },
+            scope: this
+        });
+        
+        return queryForm;
+    }
+        
+});
+
+Ext.preg(gxp.plugins.QueryForm.prototype.ptype, gxp.plugins.QueryForm);
 
 /** FILE: GeoExt/data/WMSDescribeLayerReader.js **/
 /**
@@ -79356,6 +80966,7 @@ gxp.plugins.LayerManager = Ext.extend(gxp.plugins.LayerTree, {
                     // TODO these baseParams were only tested with GeoServer,
                     // so maybe they should be configurable - and they are
                     // only relevant for gx_wmslegend.
+                    hidden: !attr.layer.getVisibility(),
                     baseParams: Ext.apply({
                         transparent: true,
                         format: "image/png",
@@ -81762,130 +83373,6 @@ Ext.reg('gxp_feedsourcedialog', gxp.FeedSourceDialog);
 
 
 
-/** FILE: plugins/CatalogueSource.js **/
-/**
- * Copyright (c) 2008-2011 The Open Planning Project
- * 
- * Published under the GPL license.
- * See https://github.com/opengeo/gxp/raw/master/license.txt for the full text
- * of the license.
- */
-
-/**
- * @requires plugins/WMSSource.js
- */
-
-/** api: (define)
- *  module = gxp.plugins
- *  class = CatalogueSource
- */
-
-/** api: (extends)
- *  plugins/WMSSource.js
- */
-Ext.namespace("gxp.plugins");
-
-/** api: constructor
- *  .. class:: CatalogueSource(config)
- *
- *    Base class for catalogue sources uses for search.
- */
-gxp.plugins.CatalogueSource = Ext.extend(gxp.plugins.WMSSource, {
-
-    /** api: config[url]
-     *  ``String`` Online resource of the catalogue service.
-     */
-    url: null,
-
-    /** api: config[title]
-     *  ``String`` Optional title for this source.
-     */
-    title: null,
-
-    /** private: property[lazy]
-     *  ``Boolean`` This source always operates lazy so without GetCapabilities
-     */
-    lazy: true,
-
-    /** api: config[hidden]
-     *  ``Boolean`` Normally we do not want these sources to show up in the
-     *  AddLayers dialog for the source combobox. Set to false for a certain 
-     *  source to show up anyway whenever that makes sense, e.g. by using a
-     *  catalogue source to retrieve all the layers for a capabilities grid.
-     */
-    hidden: true,
-
-    /** api: config[proxyOptions]
-     *  ``Object``
-     *  An optional object to pass to the constructor of the ProtocolProxy.
-     *  This can be used e.g. to set listeners.
-     */
-    proxyOptions: null,
-
-    /** api: method[describeLayer]
-     *  :arg rec: ``GeoExt.data.LayerRecord`` the layer to issue a WMS
-     *      DescribeLayer request for
-     *  :arg callback: ``Function`` Callback function. Will be called with
-     *      an ``Ext.data.Record`` from a ``GeoExt.data.DescribeLayerStore``
-     *      as first argument, or false if the WMS does not support
-     *      DescribeLayer.
-     *  :arg scope: ``Object`` Optional scope for the callback.
-     *
-     *  Get a DescribeLayer response from this source's WMS.
-     */
-    describeLayer: function(rec, callback, scope) {
-        // it makes no sense to keep a describeLayerStore since
-        // everything is lazy and layers can come from different WMSs.
-        var recordType = Ext.data.Record.create(
-            [
-                {name: "owsType", type: "string"},
-                {name: "owsURL", type: "string"},
-                {name: "typeName", type: "string"}
-            ]
-        );
-        var record = new recordType({
-            owsType: "WFS",
-            owsURL: rec.get('url'),
-            typeName: rec.get('name')
-        });
-        callback.call(scope, record);
-    },
-
-    /** private: method[destroy]
-     */
-    destroy: function() {
-        this.store && this.store.destroy();
-        this.store = null;
-        gxp.plugins.CatalogueSource.superclass.destroy.apply(this, arguments);
-    }
-
-    /** api: method[getPagingParamNames]
-     *  :return: ``Object`` with keys start and limit.
-     *
-     *  Get the names of the parameters to use for paging.
-     *
-     *  To be implemented by subclasses
-     */
-
-    /** api: method[filter]
-     *  Filter the store by querying the catalogue service.
-     *  :param options: ``Object`` An object with the following keys:
-     *
-     * .. list-table::
-     *     :widths: 20 80
-     * 
-     *     * - ``queryString``
-     *       - the search string
-     *     * - ``limit`` 
-     *       - the maximum number of records to retrieve
-     *     * - ``filters``
-     *       - additional filters to include in the query
-     *
-     *  To be implemented by subclasses
-     */
-
-});
-
 /** FILE: plugins/GeoNodeCatalogueSource.js **/
 /**
  * Copyright (c) 2008-2011 The Open Planning Project
@@ -81977,6 +83464,13 @@ gxp.plugins.GeoNodeCatalogueSource = Ext.extend(gxp.plugins.CatalogueSource, {
             }, this.fields)
         });
         gxp.plugins.LayerSource.prototype.createStore.apply(this, arguments);
+    },
+
+    /** api: method[getPagingStart]
+     *  :return: ``Integer`` Where does paging start at?
+     */
+    getPagingStart: function() {
+        return 0;
     },
 
     /** api: method[getPagingParamNames]
@@ -82261,6 +83755,7 @@ gxp.CatalogueSearchPanel = Ext.extend(Ext.Panel, {
      *  Initializes the catalogue search panel.
      */
     initComponent: function() {
+        var me = this;
         this.addEvents(
             /** api: event[addlayer]
              *  Fires when a layer needs to be added to the map.
@@ -82285,6 +83780,16 @@ gxp.CatalogueSearchPanel = Ext.extend(Ext.Panel, {
         if (sourceComboData.length > 1) {
             filterOptions.push(['csw', 'data source']);
         }
+        this.sources[this.selectedSource].store.on('loadexception', function(proxy, o, response, e) {
+            if (response.success()) {
+                Ext.Msg.show({
+                    title: e.message,
+                    msg: gxp.util.getOGCExceptionText(e.arg.exceptionReport),
+                    icon: Ext.MessageBox.ERROR,
+                    buttons: Ext.MessageBox.OK
+                });
+            }
+        });
         this.items = [{
             xtype: 'form',
             border: false,
@@ -82450,6 +83955,34 @@ gxp.CatalogueSearchPanel = Ext.extend(Ext.Panel, {
                 border: false,
                 ref: "../grid",
                 bbar: new Ext.PagingToolbar({
+                    listeners: {
+                        'beforechange': function(tb, params) {
+                            var delta = me.sources[me.selectedSource].getPagingStart();
+                            if (params.startPosition) {
+                                params.startPosition += delta;
+                            }
+                        }
+                    },
+                    /* override to support having a different value than 0 for the start */
+                    onLoad : function(store, r, o) {
+                        var delta = me.sources[me.selectedSource].getPagingStart();
+                        if(!this.rendered){
+                            this.dsLoaded = [store, r, o];
+                            return;
+                        }
+                        var p = this.getParams();
+                        this.cursor = (o.params && o.params[p.start]) ? o.params[p.start]-delta : 0;
+                        var d = this.getPageData(), ap = d.activePage, ps = d.pages;
+                        this.afterTextItem.setText(String.format(this.afterPageText, d.pages));
+                        this.inputItem.setValue(ap);
+                        this.first.setDisabled(ap == 1);
+                        this.prev.setDisabled(ap == 1);
+                        this.next.setDisabled(ap == ps);
+                        this.last.setDisabled(ap == ps);
+                        this.refresh.enable();
+                        this.updateInfo();
+                        this.fireEvent('change', this, d);
+                    },
                     paramNames: this.sources[this.selectedSource].getPagingParamNames(),
                     store: this.sources[this.selectedSource].store,
                     pageSize: this.maxRecords
@@ -82565,8 +84098,9 @@ gxp.CatalogueSearchPanel = Ext.extend(Ext.Panel, {
         if (url === null) {
             for (i=0, ii=links.length; i<ii; ++i) {
                 link = links[i];
-                if (link.value && link.value.toLowerCase().indexOf('service=wms') > 0) {
-                    var obj = OpenLayers.Util.createUrlObject(link.value);
+                var value = link.value ? link.value : link;
+                if (value.toLowerCase().indexOf('service=wms') > 0) {
+                    var obj = OpenLayers.Util.createUrlObject(value);
                     url = obj.protocol + "//" + obj.host + ":" + obj.port + obj.pathname;
                     name = obj.args.layers;
                     break;
@@ -82609,7 +84143,8 @@ gxp.CatalogueSearchPanel = Ext.extend(Ext.Panel, {
             this.fireEvent("addlayer", this, this.selectedSource, Ext.apply({
                 title: record.get('title')[0],
                 bbox: [left, bottom, right, top],
-                srs: "EPSG:4326"
+                srs: "EPSG:4326",
+                projection: record.get('projection')
             }, wmsInfo));
         }
     }
@@ -83833,13 +85368,24 @@ gxp.plugins.AddLayers = Ext.extend(gxp.plugins.Tool, {
                 handler: this.showCapabilitiesGrid, 
                 scope: this
             })];
-            if (this.initialConfig.search) {
-                items.push(new Ext.menu.Item({
-                    iconCls: 'gxp-icon-addlayers', 
+            if (this.initialConfig.search && this.initialConfig.search.selectedSource &&
+              this.target.sources[this.initialConfig.search.selectedSource]) {
+                var search = new Ext.menu.Item({
+                    iconCls: 'gxp-icon-addlayers',
                     text: this.findActionMenuText,
                     handler: this.showCatalogueSearch,
                     scope: this
-                }));
+                });
+                items.push(search);
+                Ext.Ajax.request({
+                    method: "GET",
+                    url: this.target.sources[this.initialConfig.search.selectedSource].url,
+                    callback: function(options, success, response) {
+                        if (success === false) {
+                            search.hide();
+                        }
+                    }
+                });
             }
             if (this.initialConfig.feeds) {
                 items.push(new Ext.menu.Item({
@@ -83893,13 +85439,21 @@ gxp.plugins.AddLayers = Ext.extend(gxp.plugins.Tool, {
     showCatalogueSearch: function() {
         var selectedSource = this.initialConfig.search.selectedSource;
         var sources = {};
+        var found = false;
         for (var key in this.target.layerSources) {
             var source = this.target.layerSources[key];
             if (source instanceof gxp.plugins.CatalogueSource) {
                 var obj = {};
                 obj[key] = source;
                 Ext.apply(sources, obj);
+                found = true;
             }
+        }
+        if (found === false) {
+            if (window.console) {
+                window.console.debug('No catalogue source specified');
+            }
+            return;
         }
         var output = gxp.plugins.AddLayers.superclass.addOutput.apply(this, [{
             sources: sources,
@@ -83913,7 +85467,8 @@ gxp.plugins.AddLayers = Ext.extend(gxp.plugins.Tool, {
         output.on({
             'addlayer': function(cmp, sourceKey, layerConfig) {
                 var source = this.target.layerSources[sourceKey];
-                var bounds = OpenLayers.Bounds.fromArray(layerConfig.bbox);
+                var bounds = OpenLayers.Bounds.fromArray(layerConfig.bbox,
+                    (source.yx && source.yx[layerConfig.projection] === true));
                 var mapProjection = this.target.mapPanel.map.getProjection();
                 var bbox = bounds.transform(layerConfig.srs, mapProjection);
                 layerConfig.srs = mapProjection;
@@ -84372,19 +85927,24 @@ gxp.plugins.AddLayers = Ext.extend(gxp.plugins.Tool, {
                             },
                             listeners: {
                                 uploadcomplete: function(panel, detail) {
-                                    var layers = detail["import"].tasks[0].items;
+                                    var layers = detail["import"].tasks;
                                     var item, names = {}, resource, layer;
                                     for (var i=0, len=layers.length; i<len; ++i) {
                                         item = layers[i];
                                         if (item.state === "ERROR") {
-                                            Ext.Msg.alert(item.originalName, item.errorMessage);
+                                            Ext.Msg.alert(item.layer.originalName, item.errorMessage);
                                             return;
                                         }
-                                        resource = item.resource;
-                                        layer = resource.featureType || resource.coverage;
-                                        names[layer.namespace.name + ":" + layer.name] = true;
+                                        var ws;
+                                        if (item.target.dataStore) {
+                                            ws = item.target.dataStore.workspace.name;
+                                        } else if (item.target.coverageStore) {
+                                            ws = item.target.coverageStore.workspace.name;
+                                        }
+                                        names[ws + ":" + item.layer.name] = true;
                                     }
                                     this.selectedSource.store.load({
+                                        params: {"_dc": Math.random()},
                                         callback: function(records, options, success) {
                                             var gridPanel, sel;
                                             if (this.capGrid && this.capGrid.isVisible()) {
@@ -88109,6 +89669,11 @@ var GeoExplorer = Ext.extend(gxp.Viewer, {
     contactText: "Contact",
     aboutThisMapText: "About this Map",
     // End i18n.
+
+    /** api: config[aboutUrl]
+     *  ``String`` The relative url to the about page.
+     */
+    aboutUrl: "../about.html",
     
     /**
      * private: property[mapPanel]
@@ -88323,25 +89888,30 @@ var GeoExplorer = Ext.extend(gxp.Viewer, {
     
     /** private: method[showUrl]
      */
-    showUrl: function() {
-        var win = new Ext.Window({
-            title: this.bookmarkText,
-            layout: 'form',
-            labelAlign: 'top',
-            modal: true,
-            bodyStyle: "padding: 5px",
-            width: 300,
-            items: [{
-                xtype: 'textfield',
-                fieldLabel: this.permakinkText,
-                readOnly: true,
-                anchor: "100%",
-                selectOnFocus: true,
-                value: window.location.href
-            }]
-        });
-        win.show();
-        win.items.first().selectText();
+    showUrl: function(request) {
+        if (request.status == 200) {
+            var win = new Ext.Window({
+                title: this.bookmarkText,
+                layout: 'form',
+                labelAlign: 'top',
+                modal: true,
+                bodyStyle: "padding: 5px",
+                width: 300,
+                items: [{
+                    xtype: 'textfield',
+                    fieldLabel: this.permakinkText,
+                    readOnly: true,
+                    anchor: "100%",
+                    selectOnFocus: true,
+                    value: window.location.href
+                }]
+            });
+            win.show();
+            win.items.first().selectText();
+        } else {
+            var response = Ext.util.JSON.decode(request.responseText);
+            this.displayXHRTrouble(response.error, request.status);
+        }
     },
     
     /** api: method[getBookmark]
@@ -88369,7 +89939,7 @@ var GeoExplorer = Ext.extend(gxp.Viewer, {
     displayAppInfo: function() {
         var appInfo = new Ext.Panel({
             title: this.appInfoText,
-            html: "<iframe style='border: none; height: 100%; width: 100%' src='../about.html' frameborder='0' border='0'><a target='_blank' href='../about.html'>"+this.aboutText+"</a> </iframe>"
+            html: "<iframe style='border: none; height: 100%; width: 100%' src='" + this.aboutUrl + "' frameborder='0' border='0'><a target='_blank' href='" + this.aboutUrl + "'>"+this.aboutText+"</a> </iframe>"
         });
 
         var about = Ext.applyIf(this.about, {
@@ -88490,6 +90060,10 @@ GeoExplorer.Composer = Ext.extend(GeoExplorer, {
                 uploadSource: "local",
                 postUploadAction: {
                     plugin: "styler"
+                },
+                catalogSourceKey: "local",
+                search: {
+                    selectedSource: "csw"
                 }
             }, {
                 ptype: "gxp_removelayer",
@@ -89550,6 +91124,48 @@ GeoExt.Lang.add("fr", {
     }
 });
 
+/** FILE: locale/app/no.js **/
+/**
+ * Copyright (c) 2009-2010 The Open Planning Project
+ */
+
+GeoExt.Lang.add("no", {
+    "GeoExplorer.prototype": {
+        zoomSliderText: "<div>Zoom nivå: {zoom}</div><div>Målestokk: 1:{scale}</div>",
+        loadConfigErrorText: "Problemer med å lese lagret konfigurasjon: <br />",
+        loadConfigErrorDefaultText: "Server Feil.",
+        xhrTroubleText: "Kommunikasjons Problem: Status ",
+        layersText: "Kartlag",
+        titleText: "Titel",
+        zoomLevelText: "Zoom nivå",
+        bookmarkText: "Bokmerk URL",
+        permakinkText: 'Permalenke',
+        appInfoText: "GeoExplorer",
+        aboutText: "Om GeoExplorer",
+        mapInfoText: "Kart Info",
+        descriptionText: "Beskrivelse",
+        contactText: "Kontakt",
+        aboutThisMapText: "Om dette kartet"
+    },
+    "GeoExplorer.Composer.prototype": {
+        mapText: "Kart",
+        tableText: "Tabell",
+        queryText: "Spørring",
+        exportMapText: "Publiser kart",
+        saveMapText: "Lagre kart",
+        toolsTitle: "Velg verktøy og legge til i verktøyslinjen:",
+        previewText: "Forhåndsvisning",
+        backText: "Tilbake",
+        nextText: "Neste",
+        loginText: "Login",
+        loginErrorText: "Ugylding brukernavn eller passord.",
+        userFieldText: "Bruker",
+        passwordFieldText: "Passord",
+        logoutConfirmTitle: "Advarsel",
+        logoutConfirmMessage: "Logge ut vil fjerne siste endringer, fjerne kartlag du har lagt til, og tilbakestille kart komposisjonen. Vil du lagre din komposisjon først?"
+   }
+});
+
 /** FILE: locale/ca.js **/
 /**
  * @requires GeoExt/Lang.js
@@ -89865,6 +91481,7 @@ GeoExt.Lang.add("ca", {
     },
     
     "gxp.WMSLayerPanel.prototype": {
+        attributionText: "Attribution",
         aboutText: "Quant a",
         titleText: "Títol",
         nameText: "Nom",
@@ -90106,8 +91723,8 @@ GeoExt.Lang.add("de", {
     "gxp.plugins.NavigationHistory.prototype": {
         previousMenuText: "Kartenausschnitt zurück",
         nextMenuText: "Kartenausschnitt vorwärts",
-        previousTooltip: "Kartenausschnitt zurück",
-        nextTooltip: "Kartenausschnitt vorwärts"
+        previousTooltip: "Vorherigen Kartenausschnitt anzeigen",
+        nextTooltip: "Nächsten Kartenausschnit anzeigen"
     },
 
     "gxp.plugins.OSMSource.prototype": {
@@ -90166,14 +91783,14 @@ GeoExt.Lang.add("de", {
         zoomMenuText: "Zoom Box",
         zoomInMenuText: "Vergrössern",
         zoomOutMenuText: "Verkleinern",
-        zoomTooltip: "Zoom durch Aufziehen einer Box",
+        zoomTooltip: "Box aufziehen zum Zoomen",
         zoomInTooltip: "Vergrössern",
         zoomOutTooltip: "Verkleinern"
     },
     
     "gxp.plugins.ZoomToExtent.prototype": {
         menuText: "Maximale Ausdehnung",
-        tooltip: "Maximale Ausdehnung"
+        tooltip: "Maximale Ausdehnung anzeigen"
     },
     
     "gxp.plugins.ZoomToDataExtent.prototype": {
@@ -90295,6 +91912,7 @@ GeoExt.Lang.add("de", {
     },
     
     "gxp.WMSLayerPanel.prototype": {
+        attributionText: "Attribution",
         aboutText: "Über",
         titleText: "Titel",
         nameText: "Name",
@@ -91148,6 +92766,7 @@ GeoExt.Lang.add("en", {
     },
     
     "gxp.WMSLayerPanel.prototype": {
+        attributionText: "Attribution",
         aboutText: "About",
         titleText: "Title",
         nameText: "Name",
@@ -91227,8 +92846,11 @@ GeoExt.Lang.add("en", {
         workspaceLabel: "Workspace",
         workspaceEmptyText: "Default workspace",
         dataStoreLabel: "Store",
-        dataStoreEmptyText: "Create new store",
-        defaultDataStoreEmptyText: "Default data store"
+        dataStoreEmptyText: "Choose a store",
+        dataStoreNewText: "Create new store",
+        crsLabel: "CRS",
+        crsEmptyText: "Coordinate Reference System ID",
+        invalidCrsText: "CRS identifier should be an EPSG code (e.g. EPSG:4326)"
     },
     
     "gxp.NewSourceDialog.prototype": {
@@ -91577,6 +93199,7 @@ GeoExt.Lang.add("es", {
     },
     
     "gxp.WMSLayerPanel.prototype": {
+        attributionText: "Attribution",
         aboutText: "Acerca de",
         titleText: "Título",
         nameText: "Nombre",
@@ -91753,7 +93376,7 @@ GeoExt.Lang.add("fr", {
 
     "gxp.plugins.LayerProperties.prototype": {
         menuText: "Propriétés de la couche",
-        toolTip: "Propriétés de la couche"
+        toolTip: "Afficher les propriétés de la couche"
     },
     
     "gxp.plugins.LayerTree.prototype": {
@@ -91769,28 +93392,28 @@ GeoExt.Lang.add("fr", {
 
     "gxp.plugins.Legend.prototype": { 
         menuText: "Légende",
-        tooltip: "Légende"
+        tooltip: "Afficher la légende"
     },
 
     "gxp.plugins.Measure.prototype": {
         buttonText: "Mesure",
         lengthMenuText: "Longueur",
         areaMenuText: "Surface",
-        lengthTooltip: "Mesure de longueur",
-        areaTooltip: "Mesure de surface",
-        measureTooltip: "Mesure"
+        lengthTooltip: "Mesurer une longueur",
+        areaTooltip: "Mesurer une surface",
+        measureTooltip: "Mesurer"
     },
 
     "gxp.plugins.Navigation.prototype": {
-        menuText: "Panner la carte",
-        tooltip: "Panner la carte"
+        menuText: "Panner",
+        tooltip: "Faire glisser la carte"
     },
 
     "gxp.plugins.NavigationHistory.prototype": {
         previousMenuText: "Position précédente",
         nextMenuText: "Position suivante",
-        previousTooltip: "Position précédente",
-        nextTooltip: "Position suivante"
+        previousTooltip: "Retourner à la position précédente",
+        nextTooltip: "Aller à la position suivante"
     },
 
     "gxp.plugins.LoadingIndicator.prototype": {
@@ -91860,9 +93483,9 @@ GeoExt.Lang.add("fr", {
         zoomMenuText: "Zoom Box",
         zoomInMenuText: "Zoom avant",
         zoomOutMenuText: "Zoom arrière",
-        zoomTooltip: "Zoom by dragging a box",
-        zoomInTooltip: "Zoom avant",
-        zoomOutTooltip: "Zoom arrière"
+        zoomTooltip: "Zoomer en dessinant un rectangle",
+        zoomInTooltip: "Zoomer",
+        zoomOutTooltip: "Dézoomer"
     },
     
     "gxp.plugins.ZoomToExtent.prototype": {
@@ -91968,6 +93591,7 @@ GeoExt.Lang.add("fr", {
     },
     
     "gxp.WMSLayerPanel.prototype": {
+        attributionText: "Attribution",
         aboutText: "A propos",
         titleText: "Titre",
         nameText: "Nom",
@@ -92371,6 +93995,7 @@ GeoExt.Lang.add("id", {
     },
     
     "gxp.WMSLayerPanel.prototype": {
+        attributionText: "Attribution",
         aboutText: "Tentang Program",
         titleText: "Judul",
         nameText: "Nama",
@@ -92765,6 +94390,7 @@ GeoExt.Lang.add("nl", {
     },
     
     "gxp.WMSLayerPanel.prototype": {
+        attributionText: "Bronvermelding",
         aboutText: "Informatie",
         titleText: "Titel",
         nameText: "Naam",
@@ -92874,6 +94500,440 @@ GeoExt.Lang.add("nl", {
         maxResultsText: "Max Items"
     }
 
+});
+
+/** FILE: locale/no.js **/
+/**
+* @requires GeoExt/Lang.js
+*/
+ 
+GeoExt.Lang.add("no", {
+ 
+    "gxp.menu.LayerMenu.prototype": {
+        layerText: "Kartlag"
+    },
+ 
+    "gxp.plugins.AddLayers.prototype": {
+        addActionMenuText: "Legg til kartlag",
+        addActionTip: "Legg til kartlag",
+        addServerText: "Legg til en ny server",
+        addButtonText: "Legg til kartlag",
+        untitledText: "Uten titel",
+        addLayerSourceErrorText: "Feil ved henting av WMS capabilities ({msg}).\nSjekk urlen og prøv igjen.",
+        availableLayersText: "Tilgjengelige kartlag",
+        expanderTemplateText: "<p><b>Abstrakt:</b> {abstract}</p>",
+        panelTitleText: "Titel",
+        layerSelectionText: "Vis tilgjengelige data fra:",
+        doneText: "Ferdig",
+        uploadText: "Last opp kartlag",
+        addFeedActionMenuText: "Legg til feeds",
+        searchText: "Søk etter kartlag"
+    },
+   
+    "gxp.plugins.BingSource.prototype": {
+        title: "Bing kartlag",
+        roadTitle: "Bing Roads",
+        aerialTitle: "Bing Aerial",
+        labeledAerialTitle: "Bing Aerial med Etikett"
+    },
+ 
+    "gxp.plugins.FeatureEditor.prototype": {
+        splitButtonText: "Editer",
+        createFeatureActionText: "Lag",
+        editFeatureActionText: "Modifiser",
+        createFeatureActionTip: "Lag en ny feature",
+        editFeatureActionTip: "Editer eksisterende feature",
+        commitTitle: "Sjekk inn melding",
+        commitText: "Skriv in en innsjekkingsmelding for denne editeringen:"
+    },
+   
+    "gxp.plugins.FeatureGrid.prototype": {
+        displayFeatureText: "Vis på kart",
+        firstPageTip: "Første side",
+        previousPageTip: "Neste side",
+        zoomPageExtentTip: "Zoom til side utstrekning",
+        nextPageTip: "Neste side",
+        lastPageTip: "Siste side",
+        totalMsg: "Features {1} til {2} av {0}"
+    },
+ 
+    "gxp.plugins.GoogleEarth.prototype": {
+        menuText: "3D Visning",
+        tooltip: "Bytt til 3D Visning"
+    },
+   
+    "gxp.plugins.GoogleSource.prototype": {
+        title: "Google kartlag",
+        roadmapAbstract: "Vis street map",
+        satelliteAbstract: "Vis satelitt bilder",
+        hybridAbstract: "Vis bilder med gatenavn",
+        terrainAbstract: "Vis street map med terreng"
+    },
+ 
+    "gxp.plugins.LayerProperties.prototype": {
+        menuText: "Kartlag Egenskaper",
+        toolTip: "Kartlag Egenskaper"
+    },
+   
+    "gxp.plugins.LayerTree.prototype": {
+        shortTitle: "kartlag",
+        rootNodeText: "Kartlag",
+        overlayNodeText: "Kartlag",
+        baseNodeText: "Bakgrunnskart"
+    },
+ 
+    "gxp.plugins.LayerManager.prototype": {
+        baseNodeText: "Bakgrunnskart"
+    },
+ 
+    "gxp.plugins.Legend.prototype": {
+        menuText: "Vis tegnforklaring",
+        tooltip: "Vis tegnforklaring"
+    },
+ 
+    "gxp.plugins.LoadingIndicator.prototype": {
+        loadingMapMessage: "Laster kart..."
+    },
+ 
+    "gxp.plugins.MapBoxSource.prototype": {
+        title: "MapBox kartlag",
+        blueMarbleTopoBathyJanTitle: "Blue Marble Topografi & Batymetri (januar)",
+        blueMarbleTopoBathyJulTitle: "Blue Marble Topografi & Batymetri (Juli)",
+        blueMarbleTopoJanTitle: "Blue Marble Topografi (januar)",
+        blueMarbleTopoJulTitle: "Blue Marble Topografi (Juli)",
+        controlRoomTitle: "Kontrollrom",
+        geographyClassTitle: "Geografi Klasse",
+        naturalEarthHypsoTitle: "Naturlig Jordklode Hypsometri",
+        naturalEarthHypsoBathyTitle: "Naturlig Jordklode  Hypsometri & Batymetri",
+        naturalEarth1Title: "Naturlig Jordklode I",
+        naturalEarth2Title: "Naturlig Jordklode II",
+        worldDarkTitle: "Verden Mørk",
+        worldLightTitle: "Verden Lys",
+        worldPrintTitle: "Verden utskrift"
+    },
+ 
+    "gxp.plugins.Measure.prototype": {
+        buttonText: "Mål",
+        lengthMenuText: "Lengde",
+        areaMenuText: "Areal",
+        lengthTooltip: "Mål lengde",
+        areaTooltip: "Mål areal",
+        measureTooltip: "Mål"
+    },
+ 
+    "gxp.plugins.Navigation.prototype": {
+        menuText: "Panorer kart",
+        tooltip: "Panorer kart"
+    },
+ 
+    "gxp.plugins.NavigationHistory.prototype": {
+        previousMenuText: "Zoom til forrige utstrekning",
+        nextMenuText: "Zoom til neste utstrekning",
+        previousTooltip: "Zoom til forrige utstrekning",
+        nextTooltip: "Zoom til neste utstrekning"
+    },
+ 
+    "gxp.plugins.OSMSource.prototype": {
+        title: "OpenStreetMap Kartlag",
+        mapnikAttribution: "&kopier; <a href='http://www.openstreetmap.org/copyright'>OpenStreetMap</a> bidragsytere",
+        osmarenderAttribution: "Data CC-By-SA av <a href='http://openstreetmap.org/'>OpenStreetMap</a>"
+    },
+ 
+    "gxp.plugins.Print.prototype": {
+        buttonText:"Skriv ut",
+        menuText: "Skriv ut kart",
+        tooltip: "Skriv ut kart",
+        previewText: "Forhåndsvinsning av utskrift",
+        notAllNotPrintableText: "Ikke alle kartlag kan skrives ut",
+        nonePrintableText: "Ingen av dine valgte kartlag kan skrives ut"
+    },
+ 
+    "gxp.plugins.MapQuestSource.prototype": {
+        title: "MapQuest Kartlag",
+        osmAttribution: "Titler levert av <a href='http://open.mapquest.co.uk/' target='_blank'>MapQuest</a> <img src='http://developer.mapquest.com/content/osm/mq_logo.png' border='0'>",
+        osmTitle: "MapQuest OpenStreetMap",
+        naipAttribution: "Tutker levert av <a href='http://open.mapquest.co.uk/' target='_blank'>MapQuest</a> <img src='http://developer.mapquest.com/content/osm/mq_logo.png' border='0'>",
+        naipTitle: "MapQuest bilder"
+    },
+ 
+    "gxp.plugins.QueryForm.prototype": {
+        queryActionText: "Spør",
+        queryMenuText: "Spør kartlag",
+        queryActionTip: "Spør det valgte kartlaget",
+        queryByLocationText: "Spør ved valgt kartlags utstrekning",
+        queryByAttributesText: "Spør ved attributter",
+        queryMsg: "Spørring...",
+        cancelButtonText: "Kanseler",
+        noFeaturesTitle: "Ingen treff",
+        noFeaturesMessage: "Din spørring gav ingen treff."
+    },
+ 
+    "gxp.plugins.RemoveLayer.prototype": {
+        removeMenuText: "Fjern kartlag",
+        removeActionTip: "Fjern kartlag"
+    },
+   
+    "gxp.plugins.Styler.prototype": {
+        menuText: "Kartlag Stiler",
+        tooltip: "Kartlag Stiler"
+ 
+    },
+ 
+    "gxp.plugins.WMSGetFeatureInfo.prototype": {
+        buttonText:"Identifiser",
+        infoActionTip: "Hent Feature Info",
+        popupTitle: "Feature Info"
+    },
+ 
+    "gxp.plugins.Zoom.prototype": {
+        zoomMenuText: "Zoom firkant",
+        zoomInMenuText: "Zoom inn",
+        zoomOutMenuText: "Zoom ut",
+        zoomTooltip: "Zoom ved å tegne en firkant",
+        zoomInTooltip: "Zoom inn",
+        zoomOutTooltip: "Zoom ut"
+    },
+   
+    "gxp.plugins.ZoomToExtent.prototype": {
+        menuText: "Zoom til maks utstrekning",
+        tooltip: "Zoom til maks utstrekning"
+    },
+   
+    "gxp.plugins.ZoomToDataExtent.prototype": {
+        menuText: "Zoom til kartlagets utstrekning",
+        tooltip: "Zoom til kartlagets utstrekning"
+    },
+ 
+    "gxp.plugins.ZoomToLayerExtent.prototype": {
+        menuText: "Zoom til kartlagets utstrekning",
+        tooltip: "Zoom til kartlagets utstrekning"
+    },
+   
+    "gxp.plugins.ZoomToSelectedFeatures.prototype": {
+        menuText: "Zoom til valgte features",
+        tooltip: "Zoom til valgte features"
+    },
+ 
+    "gxp.FeatureEditPopup.prototype": {
+        closeMsgTitle: "Lagre Endringer?",
+        closeMsg: "Denne featuren har nye endringer som ikke er lagret. Vill du lagre endringene?",
+        deleteMsgTitle: "Slett Feature?",
+        deleteMsg: "Er du sikker på at du vil slette denne featuren?",
+        editButtonText: "Editer",
+        editButtonTooltip: "Gjør denne featuren editerbar",
+        deleteButtonText: "Slett",
+        deleteButtonTooltip: "Slett denne featuren",
+        cancelButtonText: "Kanseler",
+        cancelButtonTooltip: "Stopp editering, forkast endringer",
+        saveButtonText: "Lagre",
+        saveButtonTooltip: "Lagre endringer"
+    },
+   
+    "gxp.FillSymbolizer.prototype": {
+        fillText: "Fyll ut",
+        colorText: "Farge",
+        opacityText: "Gjennomskinnelighet"
+    },
+   
+    "gxp.FilterBuilder.prototype": {
+        builderTypeNames: ["en", "alle", "ingen", "ikke alle"],
+        preComboText: "Treff",
+        postComboText: "av følgende:",
+        addConditionText: "legg til betingelse",
+        addGroupText: "Legg til gruppe",
+        removeConditionText: "fjern betingelse"
+    },
+   
+    "gxp.grid.CapabilitiesGrid.prototype": {
+        nameHeaderText : "Navn",
+        titleHeaderText : "Tittel",
+        queryableHeaderText : "Mulig å spørre",
+        layerSelectionLabel: "Vis tilgjengelig data fra:",
+        layerAdditionLabel: "eller legg til en ny server.",
+        expanderTemplateText: "<p><b>Abstrakt:</b> {abstract}</p>"
+    },
+   
+    "gxp.PointSymbolizer.prototype": {
+        graphicCircleText: "sirkel",
+        graphicSquareText: "firkant",
+        graphicTriangleText: "triangel",
+        graphicStarText: "stjerne",
+        graphicCrossText: "kryss",
+        graphicXText: "x",
+        graphicExternalText: "ekstern",
+        urlText: "URL",
+        opacityText: "gjennomskinnelighet",
+        symbolText: "Symbol",
+        sizeText: "Størrelse",
+        rotationText: "Rotasjon"
+    },
+ 
+    "gxp.QueryPanel.prototype": {
+        queryByLocationText: "Spør etter plassering",
+        currentTextText: "Nåværende utstrekning",
+        queryByAttributesText: "Spør etter attributter",
+        layerText: "Kartlag"
+    },
+   
+    "gxp.RulePanel.prototype": {
+        scaleSliderTemplate: "{scaleType} Målestokk 1:{scale}",
+        labelFeaturesText: "Etikett Features",
+        labelsText: "Etiketter",
+        basicText: "Grunnleggende",
+        advancedText: "Avansert",
+        limitByScaleText: "Målestokksbegrensning",
+        limitByConditionText: "Begrensning på tilstand",
+        symbolText: "Symbol",
+        nameText: "Navn"
+    },
+   
+    "gxp.ScaleLimitPanel.prototype": {
+        scaleSliderTemplate: "{scaleType} Målestokk 1:{scale}",
+        minScaleLimitText: "Minimum målestokksgrense",
+        maxScaleLimitText: "Maximum målestokksgrense"
+    },
+   
+    "gxp.StrokeSymbolizer.prototype": {
+        solidStrokeName: "solid",
+        dashStrokeName: "dash",
+        dotStrokeName: "dot",
+        titleText: "Strek",
+        styleText: "Stil",
+        colorText: "Farge",
+        widthText: "Bredde",
+        opacityText: "gjennomskinnelighet"
+    },
+   
+    "gxp.StylePropertiesDialog.prototype": {  
+        titleText: "Generel",
+        nameFieldText: "Navn",
+        titleFieldText: "Tittel",
+        abstractFieldText: "Abstrakt"
+    },
+   
+    "gxp.TextSymbolizer.prototype": {
+        labelValuesText: "Etikett verdier",
+        haloText: "Halo",
+        sizeText: "Størrelse"
+    },
+   
+    "gxp.WMSLayerPanel.prototype": {
+        attributionText: "Tilskrivende",
+        aboutText: "Om",
+        titleText: "Tittel",
+        nameText: "Navn",
+        descriptionText: "Beskrivelse",
+        displayText: "Visning",
+        opacityText: "Gjennomskinnelighet",
+        formatText: "Format",
+        transparentText: "Gjennomskinnelighet",
+        cacheText: "Cache",
+        cacheFieldText: "Bruk cachet versjon",
+        stylesText: "Tilgjengelige Stiler",
+        infoFormatText: "Info format",
+        infoFormatEmptyText: "Velg et format",
+        displayOptionsText: "Visningsvalg",
+        queryText: "Begrensning ved filter",
+        scaleText: "Begrensning ved målestokk",
+        minScaleText: "Minimum målestokk",
+        maxScaleText: "Maximum målestokk",
+        switchToFilterBuilderText: "Bytt tilbake til filter bygger",
+        cqlPrefixText: "eller ",
+        cqlText: "bruk CQL filter istedenfor",
+        singleTileText: "Enkel tile",
+        singleTileFieldText: "Bruk enkel tile"
+    },
+ 
+    "gxp.EmbedMapDialog.prototype": {
+        publishMessage: "Ditt kartlag kan publisers til web!! Kopier følgende HTML for å legge ditt kartlag til din webside:",
+        heightLabel: 'Høyde',
+        widthLabel: 'Bredde',
+        mapSizeLabel: 'Kart størrelse',
+        miniSizeLabel: 'Mini',
+        smallSizeLabel: 'Liten',
+        premiumSizeLabel: 'Premium',
+        largeSizeLabel: 'Stor'
+    },
+   
+    "gxp.WMSStylesDialog.prototype": {
+         addStyleText: "Legg til",
+         addStyleTip: "Legg til en ny stil",
+         chooseStyleText: "Velg en stil",
+         deleteStyleText: "Fjern",
+         deleteStyleTip: "Slett den valgte stilen",
+         editStyleText: "Editer",
+         editStyleTip: "Editer den valgte stilen",
+         duplicateStyleText: "Reproduser",
+         duplicateStyleTip: "Reproduser den valgte stilen",
+         addRuleText: "Legg til",
+         addRuleTip: "Legg til ny regel",
+         newRuleText: "Ny Regel",
+         deleteRuleText: "Fjern",
+         deleteRuleTip: "Slett den valgte regelen",
+         editRuleText: "Editer",
+         editRuleTip: "Editer den valgte regelen",
+         duplicateRuleText: "Reproduser",
+         duplicateRuleTip: "Reproduser den valgte regelen",
+         cancelText: "Kanseler",
+         saveText: "Lagre",
+         styleWindowTitle: "Bruker Stil: {0}",
+         ruleWindowTitle: "Stil regel: {0}",
+         stylesFieldsetTitle: "Stiler",
+         rulesFieldsetTitle: "Regler"
+    },
+ 
+    "gxp.LayerUploadPanel.prototype": {
+        titleLabel: "Titel",
+        titleEmptyText: "Kartlags titel",
+        abstractLabel: "Beskrivelse",
+        abstractEmptyText: "Kartlag beskrivelse",
+        fileLabel: "Data",
+        fieldEmptyText: "Bla igjennom data arkiv...",
+        uploadText: "Last opp",
+        uploadFailedText: "Opplasting feilet",
+        processingUploadText: "Prosesserer opplasting...",
+        waitMsgText: "Laster opp dataene...",
+        invalidFileExtensionText: "Filtype må være en av: ",
+        optionsText: "Valt",
+        workspaceLabel: "arbeidsområde",
+        workspaceEmptyText: "standard arbeidsområde",
+        dataStoreLabel: "Lagre",
+        dataStoreEmptyText: "Velg et lagringsmedium",
+        dataStoreNewText: "Velg et nytt lagringsmedium",
+        crsLabel: "KRS",
+        crsEmptyText: "Koordinat Referanse System ID",
+        invalidCrsText: "KRS identifikatorer må være en EPSG kode (e.g. EPSG:4326)"
+    },
+   
+    "gxp.NewSourceDialog.prototype": {
+        title: "Legg til ny Server...",
+        cancelText: "Kanseler",
+        addServerText: "Legg til Server",
+        invalidURLText: "Skriv inn en gyldig URL til et WMS endepunkt (f.eks. http://example.com/geoserver/wms)",
+        contactingServerText: "Kontakter Server..."
+    },
+ 
+    "gxp.ScaleOverlay.prototype": {
+        zoomLevelText: "Zoom nivå"
+    },
+ 
+    "gxp.Viewer.prototype": {
+        saveErrorText: "Problemer med å lagre: "
+    },
+ 
+    "gxp.FeedSourceDialog.prototype": {
+        feedTypeText: "Kilde",
+        addPicasaText: "Picasa Foto",
+        addYouTubeText: "YouTube Videoer",
+        addRSSText: "Andre GeoRSS Feed",
+        addFeedText: "Legg til Kart",
+        addTitleText: "Tittel",
+        keywordText: "Nøkkelord",
+        doneText: "Ferdig",
+        titleText: "Legg til Feeds",
+        maxResultsText: "Max elementer"
+    }
+ 
 });
 
 /** FILE: locale/pl.js **/
@@ -93170,6 +95230,7 @@ GeoExt.Lang.add("pl", {
     },
     
     "gxp.WMSLayerPanel.prototype": {
+        attributionText: "Attribution",
         aboutText: "O",
         titleText: "Tytuł",
         nameText: "Nazwa",
