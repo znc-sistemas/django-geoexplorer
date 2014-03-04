@@ -166,6 +166,7 @@ li.commit div {
 }
 .timeline-highlight-point-decorator {
     background-color: #F46817;
+    width: 5px;
 }
 
 /* gxp_annotation */
@@ -371,7 +372,7 @@ div.olMap div.gx-overlay-playback {
     top: 22px;
     left: 65px;
 }
-.gx-overlay-playback.x-toolbar {
+.gx-overlay-playback .x-toolbar {
     background: none;
     border: none;
 }
