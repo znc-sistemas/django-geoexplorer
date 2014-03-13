@@ -14,7 +14,7 @@ setup(
     long_description=open(os.path.join(here, 'README.rst')).read() + '\n\n' +
                      open(os.path.join(here, 'CHANGES')).read(),
     license='LGPL, see LICENSE file.',
-    install_requires=['Django'],
+    install_requires=['Django==1.5.5'],
     packages=find_packages(),
     include_package_data = True,
     zip_safe = False,
