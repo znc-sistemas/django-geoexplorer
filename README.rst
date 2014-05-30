@@ -30,6 +30,26 @@ AUTHORS
 
 * Ariel Núñez <http://ingenieroariel.com>
 
+==========
+DEVELOPERS
+==========
+
+::
+
+    git clone http://github.com/GeoNode/suite.git
+    cd suite
+    git submodule update --init
+    cd ../
+    git clone http://github.com/GeoNode/django-geoxplorer.git
+    cp -R suite/geoexplorer/target/geoexplorer/WEB-INF/app/static/* django-geoexplorer/geoexplorer/static/
+    cd django-geoexplorer
+    git add geoexplorer/static
+    vim setup.py  # update the version number
+    git add setup.py
+    git commit -m "Commit committed, a new release was needed because the other one was old."
+    git push origin master
+    python setup.py sdist upload
+
 =======
 LICENSE
 =======
