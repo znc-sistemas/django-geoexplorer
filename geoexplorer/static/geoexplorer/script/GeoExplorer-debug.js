@@ -82624,7 +82624,7 @@ gxp.plugins.FeedSource = Ext.extend(gxp.plugins.LayerSource, {
 
         var data = {
             layer:layer,
-            //title: config.name,
+            title:config.name,
             name:config.name,
             source:config.source,
             group:config.group,
